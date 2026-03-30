@@ -9,6 +9,11 @@ export interface QueueItem {
   pageCount: number
   fileSize: string
   thumbnailUrl: string
+  rating: string
+  postedDate: string
+  metaRows: string[]
+  tags: Record<string, string[]>
+  uploaderComment: string
   pagesRange: string
   addedAt: number
   status: 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'canceled'

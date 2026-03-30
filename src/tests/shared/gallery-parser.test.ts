@@ -32,12 +32,23 @@ describe('parseGalleryMetadata', () => {
       <div id="gdc"><div class="cs">Doujinshi</div></div>
       <div id="gdn">TestUploader</div>
       <div id="gdd">
-        Length: 42 pages
-        File Size: 123.4 MB
+        <table>
+          <tr><td class="gdt1">Posted:</td><td class="gdt2">2025-01-15 12:00</td></tr>
+          <tr><td class="gdt1">File Size:</td><td class="gdt2">123.4 MB</td></tr>
+          <tr><td class="gdt1">Length:</td><td class="gdt2">42 pages</td></tr>
+        </table>
       </div>
       <div id="gd1">
         <div style="background:url(https://ehgt.org/thumb.jpg) center"></div>
       </div>
+      <div id="rating_label">Average: 4.50</div>
+      <div id="taglist">
+        <table>
+          <tr><td>language:</td><td><a>chinese</a><a>translated</a></td></tr>
+          <tr><td>artist:</td><td><a>someone</a></td></tr>
+        </table>
+      </div>
+      <div id="comment_0">This is a test comment<br>with line break</div>
     </body></html>
   `
 
@@ -71,6 +82,30 @@ describe('parseGalleryMetadata', () => {
     expect(parseGalleryMetadata(doc).thumbnailUrl).toBe('https://ehgt.org/thumb.jpg')
   })
 
+  it('extracts rating', () => {
+    const doc = buildDoc(sampleHtml)
+    expect(parseGalleryMetadata(doc).rating).toBe('4.50')
+  })
+
+  it('extracts tags', () => {
+    const doc = buildDoc(sampleHtml)
+    const tags = parseGalleryMetadata(doc).tags
+    expect(tags['language']).toEqual(['chinese', 'translated'])
+    expect(tags['artist']).toEqual(['someone'])
+  })
+
+  it('extracts uploader comment', () => {
+    const doc = buildDoc(sampleHtml)
+    expect(parseGalleryMetadata(doc).uploaderComment).toBe('This is a test comment\nwith line break')
+  })
+
+  it('extracts meta rows', () => {
+    const doc = buildDoc(sampleHtml)
+    const rows = parseGalleryMetadata(doc).metaRows
+    expect(rows).toContain('Posted: 2025-01-15 12:00')
+    expect(rows).toContain('File Size: 123.4 MB')
+  })
+
   it('returns empty strings and zero when elements are missing', () => {
     const doc = buildDoc('<html><body></body></html>')
     const meta = parseGalleryMetadata(doc)
@@ -81,5 +116,9 @@ describe('parseGalleryMetadata', () => {
     expect(meta.pageCount).toBe(0)
     expect(meta.fileSize).toBe('')
     expect(meta.thumbnailUrl).toBe('')
+    expect(meta.rating).toBe('')
+    expect(meta.tags).toEqual({})
+    expect(meta.uploaderComment).toBe('')
+    expect(meta.metaRows).toEqual([])
   })
 })
