@@ -51,7 +51,7 @@ export async function packAndDownload(options: PackOptions): Promise<void> {
   await chrome.downloads.download({
     url: blobUrl,
     filename: fileName,
-    saveAs: true,
+    saveAs: false,
   })
 
   setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000)
