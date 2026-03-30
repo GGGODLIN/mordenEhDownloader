@@ -31,16 +31,19 @@ export default function App() {
   }, [queue])
 
   const handleRemove = useCallback((id: string) => {
-    const item = queue.find(q => q.id === id)
-    if (item && (item.status === 'downloading' || item.status === 'paused')) {
-      cancel(item.gid)
+    const queueItem = queue.find(q => q.id === id)
+    if (queueItem) {
+      if (queueItem.status === 'downloading' || queueItem.status === 'paused') {
+        cancel(queueItem.gid)
+      }
+      storage.setQueue(queue.filter(q => q.id !== id))
+    } else {
+      storage.setHistory(history.filter(h => h.id !== id))
     }
-    const nextQueue = queue.filter(q => q.id !== id)
-    storage.setQueue(nextQueue)
     if (selectedId === id) {
       setSelectedId(null)
     }
-  }, [queue, selectedId, cancel])
+  }, [queue, history, selectedId, cancel])
 
   const estimatedCost = queue
     .filter(item => item.status === 'queued' || item.status === 'downloading')

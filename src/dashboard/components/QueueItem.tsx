@@ -13,6 +13,7 @@ const STATUS_DOT: Record<QueueItemType['status'], string> = {
   paused: 'bg-amber-500',
   completed: 'bg-emerald-500',
   failed: 'bg-red-500',
+  canceled: 'bg-zinc-400 dark:bg-zinc-500',
 }
 
 const STATUS_LABEL: Record<QueueItemType['status'], string> = {
@@ -21,6 +22,7 @@ const STATUS_LABEL: Record<QueueItemType['status'], string> = {
   paused: 'Paused',
   completed: 'Completed',
   failed: 'Failed',
+  canceled: 'Canceled',
 }
 
 export default function QueueItemCard({ item, isSelected, onSelect, onRemove }: QueueItemProps) {

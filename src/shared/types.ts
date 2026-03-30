@@ -11,7 +11,7 @@ export interface QueueItem {
   thumbnailUrl: string
   pagesRange: string
   addedAt: number
-  status: 'queued' | 'downloading' | 'paused' | 'completed' | 'failed'
+  status: 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'canceled'
 }
 
 export interface ImageTask {

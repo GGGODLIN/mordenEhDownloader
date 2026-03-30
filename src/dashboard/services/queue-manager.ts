@@ -159,7 +159,16 @@ export class QueueManager {
       this.states.delete(id)
       this.activeIds.delete(id)
       this.onStateChange(new Map(this.states))
-      this.updateItemStatus(id, 'queued')
+
+      const queue = await storage.getQueue()
+      const item = queue.find(q => q.gid === id)
+      if (item) {
+        const newQueue = queue.filter(q => q.gid !== id)
+        await storage.setQueue(newQueue)
+
+        const history = await storage.getHistory()
+        await storage.setHistory([{ ...item, status: 'canceled' }, ...history])
+      }
     }
   }
 

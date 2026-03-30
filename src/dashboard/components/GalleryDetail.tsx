@@ -74,9 +74,17 @@ export default function GalleryDetail({
           </div>
 
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 leading-snug line-clamp-2 mb-1">
+            <a
+              href={`${item.thumbnailUrl.includes('exhentai') ? 'https://exhentai.org' : 'https://e-hentai.org'}/g/${item.gid}/${item.token}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold leading-snug line-clamp-2 mb-1
+                text-zinc-900 dark:text-zinc-100
+                hover:text-sky-600 dark:hover:text-sky-400
+                transition-colors"
+            >
               {item.title}
-            </h2>
+            </a>
             {item.subtitle && (
               <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate mb-2">
                 {item.subtitle}
@@ -146,7 +154,7 @@ export default function GalleryDetail({
                   ? 'bg-emerald-500'
                   : item.status === 'failed'
                     ? 'bg-red-500'
-                    : item.status === 'paused'
+                    : item.status === 'paused' || item.status === 'canceled'
                       ? 'bg-amber-500'
                       : 'bg-sky-500'
               }`}
@@ -193,7 +201,7 @@ export default function GalleryDetail({
               Retry Failed ({failedCount})
             </button>
           )}
-          {item.status !== 'completed' && (
+          {item.status !== 'completed' && item.status !== 'canceled' && (
             <button
               onClick={onCancel}
               className="px-3 py-1.5 text-xs font-medium rounded-md

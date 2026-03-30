@@ -60,7 +60,7 @@ export default function Sidebar({ queue, history, selectedId, onSelect, onRemove
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div key={activeTab} className="flex-1 overflow-y-auto">
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-6 text-center">
             <svg className="w-8 h-8 mb-3 text-zinc-300 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
