@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "E-Hentai Downloader",
+  "version": "2.0.0",
+  "description": "Modern download dashboard for E-Hentai galleries",
+  "permissions": [
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "*://*.e-hentai.org/*",
+    "*://*.exhentai.org/*",
+    "*://*.hath.network/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.e-hentai.org/g/*",
+        "*://*.exhentai.org/g/*"
+      ],
+      "js": ["src/content/index.ts"]
+    }
+  ],
+  "action": {
+    "default_title": "Open E-Hentai Downloader Dashboard"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/dashboard/index.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+.ehd-inject-container {
+  margin: 16px auto 20px;
+  width: 732px;
+  box-sizing: border-box;
+  font-size: 13px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ehd-inject-btn {
+  padding: 6px 16px;
+  border: 1px solid #4f535b;
+  background: #34353b;
+  color: #dddddd;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.ehd-inject-btn:hover {
+  background: #4f535b;
+}
+
+.ehd-inject-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ehd-inject-input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid #4f535b;
+  background: #34353b;
+  color: #dddddd;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.ehd-inject-input::placeholder {
+  color: #999999;
+}
