@@ -100,6 +100,36 @@ function TextInput({
   )
 }
 
+function SelectInput({
+  label, value, onChange, options, helper,
+}: {
+  label: string; value: string; onChange: (v: string) => void
+  options: { value: string; label: string }[]; helper?: string
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-2.5 py-1.5 text-sm rounded-md
+          border border-zinc-200 dark:border-zinc-700
+          bg-white dark:bg-zinc-800
+          text-zinc-900 dark:text-zinc-100
+          focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500
+          transition-colors"
+      >
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      {helper && (
+        <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{helper}</span>
+      )}
+    </div>
+  )
+}
+
 export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [activeSection, setActiveSection] = useState<Section>('download')
@@ -219,11 +249,46 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                 max={600}
                 helper="Auto-retry failed images every N seconds"
               />
+              <NumberInput
+                label="Delay Between Requests (sec)"
+                value={settings.delayRequest}
+                onChange={v => update('delayRequest', v)}
+                min={0}
+                step={0.1}
+                helper="Wait time between image downloads"
+              />
               <Toggle
                 label="Verify Checksum"
                 checked={settings.checksum}
                 onChange={v => update('checksum', v)}
                 helper="SHA-1 hash verification after download"
+              />
+              <div className="border-t border-zinc-100 dark:border-zinc-800 pt-4">
+                <Toggle
+                  label="Force Resized Image"
+                  checked={settings.forceResized}
+                  onChange={v => update('forceResized', v)}
+                  helper="Skip original image, always download resized version"
+                />
+              </div>
+              {!settings.forceResized && (
+                <Toggle
+                  label="Force as Logged In"
+                  checked={settings.forceAsLoggedIn}
+                  onChange={v => update('forceAsLoggedIn', v)}
+                  helper="Keep trying original images even on suspension"
+                />
+              )}
+              <SelectInput
+                label="Download from Domain"
+                value={settings.originalDownloadDomain}
+                onChange={v => update('originalDownloadDomain', v)}
+                options={[
+                  { value: '', label: 'Current Origin' },
+                  { value: 'e-hentai.org', label: 'e-hentai.org' },
+                  { value: 'exhentai.org', label: 'exhentai.org' },
+                ]}
+                helper="Override image download domain"
               />
             </div>
           )}
@@ -265,25 +330,63 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                 />
               </div>
               {settings.numberImages && (
-                <TextInput
-                  label="Number Separator"
-                  value={settings.numberSeparator}
-                  onChange={v => update('numberSeparator', v)}
-                  placeholder=":"
-                  helper="Character between number and filename"
-                />
+                <>
+                  <TextInput
+                    label="Number Separator"
+                    value={settings.numberSeparator}
+                    onChange={v => update('numberSeparator', v)}
+                    placeholder=":"
+                    helper="Character between number and filename"
+                  />
+                  <Toggle
+                    label="Number with Real Index"
+                    checked={settings.numberRealIndex}
+                    onChange={v => update('numberRealIndex', v)}
+                    helper="Use original page index instead of sequential"
+                  />
+                </>
               )}
+              <div className="border-t border-zinc-100 dark:border-zinc-800 pt-4">
+                <Toggle
+                  label="Save Gallery Info"
+                  checked={settings.saveGalleryInfo}
+                  onChange={v => update('saveGalleryInfo', v)}
+                  helper="Include info.txt with gallery metadata in ZIP"
+                />
+              </div>
+              <NumberInput
+                label="Compression Level"
+                value={settings.compressionLevel}
+                onChange={v => update('compressionLevel', v)}
+                min={0}
+                max={9}
+                helper="0 = no compression (STORE), 1-9 = DEFLATE level"
+              />
+              <Toggle
+                label="Replace with Full-Width Characters"
+                checked={settings.replaceWithFullWidth}
+                onChange={v => update('replaceWithFullWidth', v)}
+                helper="Use full-width chars instead of dashes for unsafe characters"
+              />
             </div>
           )}
 
           {activeSection === 'warning' && (
             <div className="flex flex-col gap-4">
               <Toggle
-                label="Peak Hours Warning"
-                checked={settings.peakHoursWarning}
-                onChange={v => update('peakHoursWarning', v)}
-                helper="Warn when downloading during peak hours (slower speeds)"
+                label="Auto Save on Cancel"
+                checked={settings.autoDownloadOnCancel}
+                onChange={v => update('autoDownloadOnCancel', v)}
+                helper="Save downloaded images when cancelling a gallery"
               />
+              <div className="border-t border-zinc-100 dark:border-zinc-800 pt-4">
+                <Toggle
+                  label="Peak Hours Warning"
+                  checked={settings.peakHoursWarning}
+                  onChange={v => update('peakHoursWarning', v)}
+                  helper="Warn when downloading during peak hours (slower speeds)"
+                />
+              </div>
               <Toggle
                 label="Image Limits Warning"
                 checked={settings.imageLimitsWarning}

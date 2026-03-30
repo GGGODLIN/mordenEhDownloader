@@ -30,6 +30,7 @@ export class GalleryDownloader {
   private state: GalleryDownloadState
   private abortController: AbortController
   private periodicRetryTimer: ReturnType<typeof setTimeout> | null = null
+  private forceResizedForAll = false
 
   constructor(
     info: GalleryInfo,
@@ -112,6 +113,7 @@ export class GalleryDownloader {
       speed: 0,
       retryCount: 0,
       error: null,
+      nl: null,
     }))
 
     this.state = { ...this.state, imageTasks: tasks }
@@ -162,8 +164,15 @@ export class GalleryDownloader {
         while (true) {
           if (signal.aborted || this.state.isPaused) break
 
+          let currentPageUrl = task.pageUrl
+          const taskNl = this.state.imageTasks[idx].nl
+          if (taskNl && retries > 0) {
+            const separator = currentPageUrl.includes('?') ? '&' : '?'
+            currentPageUrl = `${currentPageUrl}${separator}nl=${taskNl}`
+          }
+
           const result = await fetchImageFromPage(
-            task.pageUrl,
+            currentPageUrl,
             this.info.gid,
             task.index + 1,
             this.settings,
@@ -181,7 +190,12 @@ export class GalleryDownloader {
                 }
               },
             },
+            this.forceResizedForAll ? true : undefined,
           )
+
+          if (result.nl) {
+            this.updateTask(idx, { nl: result.nl })
+          }
 
           if (result.error === null) {
             this.updateTask(idx, {
@@ -190,7 +204,14 @@ export class GalleryDownloader {
               progress: 1,
               error: null,
             })
+            if (this.settings.delayRequest > 0) {
+              await new Promise(r => setTimeout(r, this.settings.delayRequest * 1000))
+            }
             break
+          }
+
+          if (result.error.type === 'account_suspended' && !this.settings.forceAsLoggedIn) {
+            this.forceResizedForAll = true
           }
 
           if (result.error.shouldPauseAll) {
@@ -203,6 +224,9 @@ export class GalleryDownloader {
           if (result.error.forceRetry || retries < maxRetries) {
             retries++
             this.updateTask(idx, { retryCount: retries, status: 'fetching' })
+            if (this.settings.delayRequest > 0) {
+              await new Promise(r => setTimeout(r, this.settings.delayRequest * 1000))
+            }
             continue
           }
 
@@ -211,6 +235,9 @@ export class GalleryDownloader {
             error: result.error.message,
             retryCount: retries,
           })
+          if (this.settings.delayRequest > 0) {
+            await new Promise(r => setTimeout(r, this.settings.delayRequest * 1000))
+          }
           break
         }
       }
@@ -247,16 +274,23 @@ export class GalleryDownloader {
     }
   }
 
-  private async finalize(): Promise<void> {
-    const doneTasks = this.state.imageTasks.filter(t => t.status === 'done')
+  private async finalize(tasksOverride?: ImageTask[]): Promise<void> {
+    const doneTasks = (tasksOverride ?? this.state.imageTasks).filter(t => t.status === 'done')
 
     let names = doneTasks.map(t => t.imageName ?? '')
-    const total = names.length
 
     if (this.settings.numberImages) {
-      names = names.map((name, i) =>
-        numberImageName(name, i + 1, total, this.settings.numberSeparator),
-      )
+      if (this.settings.numberRealIndex) {
+        const total = this.info.pageCount
+        names = doneTasks.map((task, i) =>
+          numberImageName(names[i], task.realIndex, total, this.settings.numberSeparator),
+        )
+      } else {
+        const total = names.length
+        names = names.map((name, i) =>
+          numberImageName(name, i + 1, total, this.settings.numberSeparator),
+        )
+      }
     }
 
     names = renameImageDuplicates(names)
@@ -268,6 +302,7 @@ export class GalleryDownloader {
       nameMapping.set(storedKey, names[i])
     }
 
+    const useFullWidth = this.settings.replaceWithFullWidth
     const templateVars = {
       gid: this.info.gid,
       token: this.info.token,
@@ -277,9 +312,27 @@ export class GalleryDownloader {
       uploader: this.info.uploader,
     }
 
-    const dirName = applyTemplate(this.settings.dirNameTemplate, templateVars)
-    const rawFileName = applyTemplate(this.settings.fileNameTemplate, templateVars)
-    const fileName = getSafeName(rawFileName) + '.zip'
+    const dirName = applyTemplate(this.settings.dirNameTemplate, templateVars, useFullWidth)
+    const rawFileName = applyTemplate(this.settings.fileNameTemplate, templateVars, useFullWidth)
+    const fileName = getSafeName(rawFileName, useFullWidth) + '.zip'
+
+    let infoText: string | undefined
+    if (this.settings.saveGalleryInfo) {
+      const origin = getOrigin(this.info)
+      const url = `${origin}/g/${this.info.gid}/${this.info.token}/`
+      infoText = [
+        `Title: ${this.info.title}`,
+        this.info.subtitle ? `Subtitle: ${this.info.subtitle}` : null,
+        `URL: ${url}`,
+        `Category: ${this.info.category}`,
+        `Uploader: ${this.info.uploader}`,
+        `Pages: ${this.info.pageCount}`,
+        `File Size: ${this.info.fileSize}`,
+        `Downloaded at: ${new Date().toISOString()}`,
+        '',
+        'Generated by E-Hentai Downloader',
+      ].filter(line => line !== null).join('\n')
+    }
 
     await packAndDownload({
       galleryId: this.info.gid,
@@ -287,6 +340,8 @@ export class GalleryDownloader {
       fileName,
       nameMapping,
       onProgress: () => {},
+      infoText,
+      compressionLevel: this.settings.compressionLevel,
     })
   }
 
@@ -324,8 +379,15 @@ export class GalleryDownloader {
 
         this.updateTask(idx, { status: 'fetching' })
 
+        let currentPageUrl = this.state.imageTasks[idx].pageUrl
+        const taskNl = this.state.imageTasks[idx].nl
+        if (taskNl) {
+          const separator = currentPageUrl.includes('?') ? '&' : '?'
+          currentPageUrl = `${currentPageUrl}${separator}nl=${taskNl}`
+        }
+
         const result = await fetchImageFromPage(
-          this.state.imageTasks[idx].pageUrl,
+          currentPageUrl,
           this.info.gid,
           this.state.imageTasks[idx].index + 1,
           this.settings,
@@ -341,7 +403,12 @@ export class GalleryDownloader {
               if (status === 'hashing') this.updateTask(idx, { status: 'hashing' })
             },
           },
+          this.forceResizedForAll ? true : undefined,
         )
+
+        if (result.nl) {
+          this.updateTask(idx, { nl: result.nl })
+        }
 
         if (result.error === null) {
           this.updateTask(idx, {
@@ -350,8 +417,17 @@ export class GalleryDownloader {
             progress: 1,
             error: null,
           })
+          if (this.settings.delayRequest > 0) {
+            await new Promise(r => setTimeout(r, this.settings.delayRequest * 1000))
+          }
         } else {
+          if (result.error.type === 'account_suspended' && !this.settings.forceAsLoggedIn) {
+            this.forceResizedForAll = true
+          }
           this.updateTask(idx, { status: 'failed', error: result.error.message })
+          if (this.settings.delayRequest > 0) {
+            await new Promise(r => setTimeout(r, this.settings.delayRequest * 1000))
+          }
         }
       }
     }
@@ -392,6 +468,12 @@ export class GalleryDownloader {
     this.stopPeriodicRetry()
     this.abortController.abort()
     storageManager.deleteGallery(this.info.gid)
+  }
+
+  async savePartial(): Promise<void> {
+    this.stopPeriodicRetry()
+    this.abortController.abort()
+    await this.finalize()
   }
 
   getState(): GalleryDownloadState {

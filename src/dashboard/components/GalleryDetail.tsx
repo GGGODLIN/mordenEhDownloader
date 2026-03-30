@@ -92,7 +92,11 @@ export default function GalleryDetail({
               </span>
               <span className="text-zinc-300 dark:text-zinc-600">|</span>
               <span className="font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
-                {item.pageCount} pages
+                {item.pageCount} pages{(item.status === 'queued' || item.status === 'downloading') && (
+                  <span className="text-zinc-400 dark:text-zinc-500">
+                    {' '}(~{item.pageCount} limits)
+                  </span>
+                )}
               </span>
               <span className="text-zinc-300 dark:text-zinc-600">|</span>
               <span className="font-mono tabular-nums text-zinc-500 dark:text-zinc-400">

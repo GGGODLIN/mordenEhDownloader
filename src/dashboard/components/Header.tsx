@@ -1,12 +1,14 @@
 interface HeaderProps {
   imageLimitsCurrent: number
   imageLimitsTotal: number
+  estimatedCost?: number
   onOpenSettings: () => void
 }
 
-export default function Header({ imageLimitsCurrent, imageLimitsTotal, onOpenSettings }: HeaderProps) {
+export default function Header({ imageLimitsCurrent, imageLimitsTotal, estimatedCost, onOpenSettings }: HeaderProps) {
+  const projected = imageLimitsCurrent + (estimatedCost ?? 0)
   const limitsPercent = imageLimitsTotal > 0 ? (imageLimitsCurrent / imageLimitsTotal) * 100 : 0
-  const isNearLimit = limitsPercent > 80
+  const isNearLimit = limitsPercent > 80 || (imageLimitsTotal > 0 && projected > imageLimitsTotal)
   const hasLimitsData = imageLimitsTotal > 0
 
   return (

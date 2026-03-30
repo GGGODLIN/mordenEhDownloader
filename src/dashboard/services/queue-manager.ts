@@ -143,10 +143,18 @@ export class QueueManager {
     }
   }
 
-  cancelGallery(id: string): void {
+  async cancelGallery(id: string): Promise<void> {
     const downloader = this.downloaders.get(id)
     if (downloader) {
-      downloader.cancel()
+      const state = downloader.getState()
+      const hasDone = state.imageTasks.some(t => t.status === 'done')
+
+      if (this.settings.autoDownloadOnCancel && hasDone) {
+        await downloader.savePartial()
+      } else {
+        downloader.cancel()
+      }
+
       this.downloaders.delete(id)
       this.states.delete(id)
       this.activeIds.delete(id)

@@ -8,16 +8,22 @@ export interface PackOptions {
   fileName: string
   nameMapping: Map<string, string> | null
   onProgress: (percent: number) => void
+  infoText?: string
+  compressionLevel?: number
 }
 
 export async function packAndDownload(options: PackOptions): Promise<void> {
-  const { galleryId, dirName, fileName, nameMapping, onProgress } = options
+  const { galleryId, dirName, fileName, nameMapping, onProgress, infoText, compressionLevel } = options
 
   const imageFiles = await storageManager.listImages(galleryId)
   const zip = new JSZip()
 
   const useRoot = dirName === '/' || REGEX.slashOnly.test(dirName)
   const folder = useRoot ? zip : zip.folder(dirName)!
+
+  if (infoText) {
+    folder.file('info.txt', infoText)
+  }
 
   for (let i = 0; i < imageFiles.length; i++) {
     const storedName = imageFiles[i]
@@ -28,8 +34,13 @@ export async function packAndDownload(options: PackOptions): Promise<void> {
     onProgress(Math.round(((i + 1) / imageFiles.length) * 50))
   }
 
+  const level = compressionLevel ?? 0
+  const generateOptions = level > 0
+    ? { type: 'blob' as const, compression: 'DEFLATE' as const, compressionOptions: { level } }
+    : { type: 'blob' as const, compression: 'STORE' as const }
+
   const blob = await zip.generateAsync(
-    { type: 'blob', compression: 'STORE' },
+    generateOptions,
     (meta) => {
       onProgress(50 + Math.round(meta.percent / 2))
     },

@@ -21,6 +21,22 @@ describe('getSafeName', () => {
   it('no change for safe name', () => {
     expect(getSafeName('hello world')).toBe('hello world')
   })
+
+  it('uses full-width replacements when useFullWidth is true', () => {
+    expect(getSafeName('hello:world', true)).toBe('hello\uFF1Aworld')
+  })
+
+  it('replaces multiple chars with full-width', () => {
+    expect(getSafeName('a"b*c?d', true)).toBe('a\uFF02b\uFF0Ac\uFF1Fd')
+  })
+
+  it('replaces newline with dash even in full-width mode', () => {
+    expect(getSafeName('hello\nworld', true)).toBe('hello-world')
+  })
+
+  it('uses dashes by default (useFullWidth false)', () => {
+    expect(getSafeName('hello:world', false)).toBe('hello-world')
+  })
 })
 
 describe('applyTemplate', () => {

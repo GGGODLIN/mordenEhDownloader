@@ -26,6 +26,7 @@ export interface ImageTask {
   speed: number
   retryCount: number
   error: string | null
+  nl: string | null
 }
 
 export interface Settings {
@@ -37,11 +38,20 @@ export interface Settings {
   speedMinKBs: number
   speedExpiredSec: number
   periodicRetrySec: number
+  delayRequest: number
   dirNameTemplate: string
   fileNameTemplate: string
   numberImages: boolean
   numberSeparator: string
+  numberRealIndex: boolean
   checksum: boolean
+  forceResized: boolean
+  forceAsLoggedIn: boolean
+  originalDownloadDomain: string
+  saveGalleryInfo: boolean
+  compressionLevel: number
+  replaceWithFullWidth: boolean
+  autoDownloadOnCancel: boolean
   peakHoursWarning: boolean
   imageLimitsWarning: boolean
 }

@@ -7,6 +7,7 @@ import { storageManager } from './storage-manager'
 export interface FetchImageResult {
   imageName: string
   error: ClassifiedError | null
+  nl: string | null
 }
 
 export interface FetchImageCallbacks {
@@ -20,12 +21,28 @@ function decodeHtmlEntities(str: string): string {
   return textarea.value
 }
 
-function extractImageUrl(html: string): string | null {
-  for (const pattern of REGEX.imageURL) {
+function extractNl(html: string): string | null {
+  const match = html.match(REGEX.nl)
+  return match ? match[1] : null
+}
+
+function extractImageUrl(html: string, forceResized?: boolean): string | null {
+  const patterns = forceResized ? REGEX.imageURL.slice(1) : REGEX.imageURL
+  for (const pattern of patterns) {
     const match = html.match(pattern)
     if (match) return decodeHtmlEntities(match[1])
   }
   return null
+}
+
+function replaceImageDomain(imageUrl: string, domain: string): string {
+  try {
+    const url = new URL(imageUrl)
+    url.hostname = domain
+    return url.toString()
+  } catch {
+    return imageUrl
+  }
 }
 
 function extractFileName(html: string): string | null {
@@ -59,6 +76,7 @@ export async function fetchImageFromPage(
   settings: Settings,
   signal: AbortSignal,
   callbacks: FetchImageCallbacks,
+  forceResizedOverride?: boolean,
 ): Promise<FetchImageResult> {
   callbacks.onStatus('fetching')
 
@@ -71,6 +89,7 @@ export async function fetchImageFromPage(
     if (signal.aborted) {
       return {
         imageName: '',
+        nl: null,
         error: {
           type: 'network_error',
           message: 'Aborted',
@@ -82,6 +101,7 @@ export async function fetchImageFromPage(
     }
     return {
       imageName: '',
+      nl: null,
       error: {
         type: 'network_error',
         message: err instanceof Error ? err.message : 'Failed to fetch page',
@@ -92,10 +112,13 @@ export async function fetchImageFromPage(
     }
   }
 
-  const imageUrl = extractImageUrl(pageHtml)
+  const nl = extractNl(pageHtml)
+  const useResized = forceResizedOverride ?? settings.forceResized
+  const imageUrl = extractImageUrl(pageHtml, useResized)
   if (!imageUrl) {
     return {
       imageName: '',
+      nl,
       error: {
         type: 'unknown',
         message: 'Could not extract image URL from page',
@@ -106,12 +129,16 @@ export async function fetchImageFromPage(
     }
   }
 
+  let finalImageUrl = imageUrl
+  if (settings.originalDownloadDomain) {
+    finalImageUrl = replaceImageDomain(finalImageUrl, settings.originalDownloadDomain)
+  }
+
   const parsedFileName = extractFileName(pageHtml)
 
   let imageResponse: Response
   try {
     const controller = new AbortController()
-    const combinedSignal = signal
 
     let watchdogTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -126,7 +153,7 @@ export async function fetchImageFromPage(
 
     const fetchSignal = controller.signal
 
-    imageResponse = await fetch(imageUrl, {
+    imageResponse = await fetch(finalImageUrl, {
       credentials: 'include',
       signal: fetchSignal,
     })
@@ -136,6 +163,7 @@ export async function fetchImageFromPage(
     if (!imageResponse.body) {
       return {
         imageName: '',
+        nl,
         error: {
           type: 'empty_response',
           message: 'No response body',
@@ -162,6 +190,7 @@ export async function fetchImageFromPage(
         reader.cancel()
         return {
           imageName: '',
+          nl,
           error: {
             type: 'network_error',
             message: 'Aborted',
@@ -210,7 +239,7 @@ export async function fetchImageFromPage(
     )
 
     if (classifiedError) {
-      return { imageName: '', error: classifiedError }
+      return { imageName: '', nl, error: classifiedError }
     }
 
     let imageName = parsedFileName ?? ''
@@ -219,7 +248,7 @@ export async function fetchImageFromPage(
     if (resFileNameMatch) {
       imageName = resFileNameMatch[1].trim()
     } else {
-      const nameFromUrl = getFileNameFromUrl(imageUrl)
+      const nameFromUrl = getFileNameFromUrl(finalImageUrl)
       if (nameFromUrl) imageName = nameFromUrl
     }
 
@@ -227,12 +256,13 @@ export async function fetchImageFromPage(
 
     if (settings.checksum) {
       callbacks.onStatus('hashing')
-      const checksum = parseChecksumFromUrl(imageUrl, pageUrl)
+      const checksum = parseChecksumFromUrl(finalImageUrl, pageUrl)
       if (checksum) {
         const hash = await getSha1Checksum(buffer)
         if (hash && hash.indexOf(checksum) !== 0) {
           return {
             imageName: '',
+            nl,
             error: {
               type: 'checksum_mismatch',
               message: `Checksum mismatch: expected ${checksum}, got ${hash?.slice(0, checksum.length)}`,
@@ -248,11 +278,12 @@ export async function fetchImageFromPage(
     const storedFileName = `${padIndex(index)}_${imageName}`
     await storageManager.writeImage(galleryId, storedFileName, buffer)
 
-    return { imageName, error: null }
+    return { imageName, nl, error: null }
   } catch (err) {
     if (signal.aborted) {
       return {
         imageName: '',
+        nl: null,
         error: {
           type: 'network_error',
           message: 'Aborted',
@@ -266,6 +297,7 @@ export async function fetchImageFromPage(
     const isTimeout = err instanceof Error && err.name === 'AbortError'
     return {
       imageName: '',
+      nl: null,
       error: {
         type: isTimeout ? 'timeout' : 'network_error',
         message: err instanceof Error ? err.message : 'Network error',

@@ -9,19 +9,36 @@ export interface TemplateVars {
 
 const DANGER_CHARS = /[:"*?|<>\/\\~\n]/g
 
-export function getSafeName(str: string): string {
+const FULL_WIDTH_MAP: Record<string, string> = {
+  ':': '\uFF1A',
+  '"': '\uFF02',
+  '*': '\uFF0A',
+  '?': '\uFF1F',
+  '|': '\uFF5C',
+  '<': '\uFF1C',
+  '>': '\uFF1E',
+  '/': '\uFF0F',
+  '\\': '\uFF3C',
+  '~': '\uFF5E',
+  '\n': '-',
+}
+
+export function getSafeName(str: string, useFullWidth?: boolean): string {
+  if (useFullWidth) {
+    return str.replace(DANGER_CHARS, (ch) => FULL_WIDTH_MAP[ch] ?? '-').trim()
+  }
   return str.replace(DANGER_CHARS, '-').trim()
 }
 
-export function applyTemplate(template: string, vars: TemplateVars): string {
+export function applyTemplate(template: string, vars: TemplateVars, useFullWidth?: boolean): string {
   const subtitle = vars.subtitle || vars.title
   return template
     .replace(/\{gid\}/gi, vars.gid)
     .replace(/\{token\}/gi, vars.token)
-    .replace(/\{title\}/gi, getSafeName(vars.title))
-    .replace(/\{subtitle\}/gi, getSafeName(subtitle))
+    .replace(/\{title\}/gi, getSafeName(vars.title, useFullWidth))
+    .replace(/\{subtitle\}/gi, getSafeName(subtitle, useFullWidth))
     .replace(/\{category\}/gi, vars.category)
-    .replace(/\{uploader\}/gi, getSafeName(vars.uploader))
+    .replace(/\{uploader\}/gi, getSafeName(vars.uploader, useFullWidth))
 }
 
 export function renameImageDuplicates(names: string[]): string[] {

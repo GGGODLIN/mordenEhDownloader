@@ -42,6 +42,10 @@ export default function App() {
     }
   }, [queue, selectedId, cancel])
 
+  const estimatedCost = queue
+    .filter(item => item.status === 'queued' || item.status === 'downloading')
+    .reduce((sum, item) => sum + item.pageCount, 0)
+
   const selectedItem = [...queue, ...history].find(item => item.id === selectedId) ?? null
 
   const imageTasks = selectedItem ? getImageTasks(selectedItem.gid) : []
@@ -61,6 +65,7 @@ export default function App() {
       <Header
         imageLimitsCurrent={imageLimits.current}
         imageLimitsTotal={imageLimits.total}
+        estimatedCost={estimatedCost}
         onOpenSettings={() => setShowSettings(true)}
       />
       <div className="flex flex-1 min-h-0">
