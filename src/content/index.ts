@@ -58,6 +58,14 @@ function init() {
   } else {
     document.body.appendChild(container)
   }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'q' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return
+      addBtn.click()
+    }
+  })
 }
 
 init()

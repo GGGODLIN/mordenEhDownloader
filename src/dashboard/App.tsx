@@ -20,6 +20,18 @@ export default function App() {
   const [dismissedBanners, setDismissedBanners] = useState<Set<string>>(new Set())
 
   useEffect(() => {
+    const downloadingCount = queue.filter(item => item.status === 'downloading').length
+    const totalQueue = queue.length
+    if (downloadingCount > 0) {
+      document.title = `[${downloadingCount}/${totalQueue}] E-Hentai Downloader`
+    } else if (totalQueue > 0) {
+      document.title = `[${totalQueue}] E-Hentai Downloader`
+    } else {
+      document.title = 'E-Hentai Downloader'
+    }
+  }, [queue])
+
+  useEffect(() => {
     const hasDownloading = queue.some(item => item.status === 'downloading')
     if (!hasDownloading) return
 
