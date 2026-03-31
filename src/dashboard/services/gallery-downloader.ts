@@ -12,6 +12,8 @@ export interface GalleryDownloadState {
   error: ClassifiedError | null
 }
 
+export type DownloadResult = 'completed' | 'failed' | 'paused' | 'aborted' | 'no_pages'
+
 type GalleryInfo = QueueItem
 
 function getOrigin(item: GalleryInfo): string {
@@ -63,7 +65,7 @@ export class GalleryDownloader {
     this.emit()
   }
 
-  async start(threadCount: number): Promise<void> {
+  async start(threadCount: number): Promise<DownloadResult> {
     const signal = this.abortController.signal
     const origin = getOrigin(this.info)
     const pathname = getPathname(this.info)
@@ -85,7 +87,7 @@ export class GalleryDownloader {
         },
       )
     } catch {
-      if (signal.aborted) return
+      if (signal.aborted) return 'aborted'
       this.state = {
         ...this.state,
         isPaused: true,
@@ -98,7 +100,22 @@ export class GalleryDownloader {
         },
       }
       this.emit()
-      return
+      return 'failed'
+    }
+
+    if (result.pageUrls.length === 0) {
+      this.state = {
+        ...this.state,
+        error: {
+          type: 'unknown',
+          message: 'No pages found',
+          shouldRetry: true,
+          shouldPauseAll: false,
+          forceRetry: false,
+        },
+      }
+      this.emit()
+      return 'no_pages'
     }
 
     const tasks: ImageTask[] = result.pageUrls.map((url, i) => ({
@@ -119,10 +136,10 @@ export class GalleryDownloader {
     this.state = { ...this.state, imageTasks: tasks }
     this.emit()
 
-    await this.downloadAll(threadCount)
+    return this.downloadAll(threadCount)
   }
 
-  private async downloadAll(threadCount: number): Promise<void> {
+  private async downloadAll(threadCount: number): Promise<DownloadResult> {
     const signal = this.abortController.signal
     let taskIndex = 0
 
@@ -246,18 +263,21 @@ export class GalleryDownloader {
     const threads = Array.from({ length: threadCount }, () => runThread())
     await Promise.all(threads)
 
-    if (signal.aborted) return
+    if (signal.aborted) return 'aborted'
 
     const failed = this.state.imageTasks.filter(t => t.status === 'failed')
 
     if (failed.length > 0 && !this.state.isPaused) {
       this.startPeriodicRetry(threadCount)
-      return
+      return 'failed'
     }
 
-    if (!this.state.isPaused) {
-      await this.finalize()
+    if (this.state.isPaused) {
+      return 'paused'
     }
+
+    await this.finalize()
+    return 'completed'
   }
 
   private startPeriodicRetry(threadCount: number): void {

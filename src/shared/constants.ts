@@ -23,6 +23,8 @@ export const DEFAULT_SETTINGS: Settings = {
   compressionLevel: 0,
   replaceWithFullWidth: false,
   autoDownloadOnCancel: true,
+  historyCheckDays: 30,
+  historyMaxItems: 500,
   peakHoursWarning: true,
   imageLimitsWarning: true,
 }
@@ -76,5 +78,6 @@ export const LIMITS_EXCEEDED_STRINGS = [
 
 export const MESSAGE_TYPES = {
   ADD_TO_QUEUE: 'ADD_TO_QUEUE',
+  CHECK_DUPLICATE: 'CHECK_DUPLICATE',
   OPEN_DASHBOARD: 'OPEN_DASHBOARD',
 } as const

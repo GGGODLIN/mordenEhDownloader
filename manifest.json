@@ -5,6 +5,7 @@
   "description": "Modern download dashboard for E-Hentai galleries",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "downloads"
   ],
   "host_permissions": [

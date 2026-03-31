@@ -379,6 +379,24 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                 onChange={v => update('autoDownloadOnCancel', v)}
                 helper="Save downloaded images when cancelling a gallery"
               />
+              <div className="grid grid-cols-2 gap-4">
+                <NumberInput
+                  label="Duplicate Check (days)"
+                  value={settings.historyCheckDays}
+                  onChange={v => update('historyCheckDays', v)}
+                  min={0}
+                  max={365}
+                  helper="0 = disabled"
+                />
+                <NumberInput
+                  label="History Max Items"
+                  value={settings.historyMaxItems}
+                  onChange={v => update('historyMaxItems', v)}
+                  min={0}
+                  max={10000}
+                  helper="0 = unlimited"
+                />
+              </div>
               <div className="border-t border-zinc-100 dark:border-zinc-800 pt-4">
                 <Toggle
                   label="Peak Hours Warning"

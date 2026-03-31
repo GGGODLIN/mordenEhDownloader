@@ -8,6 +8,8 @@ export class QueueManager {
   private downloaders: Map<string, GalleryDownloader> = new Map()
   private states: Map<string, GalleryDownloadState> = new Map()
   private activeIds: Set<string> = new Set()
+  private processing = false
+  private pendingProcess = false
 
   constructor(
     settings: Settings,
@@ -22,17 +24,33 @@ export class QueueManager {
   }
 
   async processQueue(): Promise<void> {
-    const queue = await storage.getQueue()
-    const maxActive = this.settings.maxConcurrentGalleries
-    const available = maxActive - this.activeIds.size
+    if (this.processing) {
+      this.pendingProcess = true
+      return
+    }
+    this.processing = true
 
-    if (available <= 0) return
+    try {
+      const queue = await storage.getQueue()
+      const maxActive = this.settings.maxConcurrentGalleries
+      const available = maxActive - this.activeIds.size
 
-    const queued = queue.filter(item => item.status === 'queued')
+      if (available <= 0) return
 
-    for (let i = 0; i < Math.min(available, queued.length); i++) {
-      const item = queued[i]
-      await this.startDownload(item)
+      const queued = queue.filter(item =>
+        item.status === 'queued' && !this.activeIds.has(item.gid),
+      )
+
+      for (let i = 0; i < Math.min(available, queued.length); i++) {
+        const item = queued[i]
+        await this.startDownload(item)
+      }
+    } finally {
+      this.processing = false
+      if (this.pendingProcess) {
+        this.pendingProcess = false
+        this.processQueue()
+      }
     }
   }
 
@@ -54,19 +72,23 @@ export class QueueManager {
 
     await this.updateItemStatus(item.gid, 'downloading')
 
-    downloader.start(threadCount).then(async () => {
-      const state = downloader.getState()
-      const allDone = state.imageTasks.every(t => t.status === 'done')
-      const hasFailed = state.imageTasks.some(t => t.status === 'failed')
-
-      if (allDone && !hasFailed) {
-        await this.onDownloadComplete(item.gid)
-      } else if (state.isPaused) {
-        await this.updateItemStatus(item.gid, 'paused')
-      } else {
-        await this.updateItemStatus(item.gid, 'failed')
-        this.activeIds.delete(item.gid)
-        await this.processQueue()
+    downloader.start(threadCount).then(async (result) => {
+      switch (result) {
+        case 'completed':
+          await this.onDownloadComplete(item.gid)
+          break
+        case 'paused':
+          await this.updateItemStatus(item.gid, 'paused')
+          break
+        case 'aborted':
+          break
+        case 'no_pages':
+        case 'failed':
+          await this.updateItemStatus(item.gid, 'failed')
+          this.activeIds.delete(item.gid)
+          this.downloaders.delete(item.gid)
+          await this.processQueue()
+          break
       }
     })
   }
@@ -82,7 +104,7 @@ export class QueueManager {
       await storage.setQueue(newQueue)
 
       const history = await storage.getHistory()
-      await storage.setHistory([...history, { ...item, status: 'completed' }])
+      await storage.setHistory([{ ...item, status: 'completed', completedAt: Date.now() }, ...history])
     }
 
     this.downloaders.delete(galleryId)
@@ -167,7 +189,7 @@ export class QueueManager {
         await storage.setQueue(newQueue)
 
         const history = await storage.getHistory()
-        await storage.setHistory([{ ...item, status: 'canceled' }, ...history])
+        await storage.setHistory([{ ...item, status: 'canceled', completedAt: Date.now() }, ...history])
       }
     }
   }

@@ -67,6 +67,25 @@ export default function App() {
   const rawBanner = selectedItem ? getBanner(selectedItem.gid) : null
   const banner = rawBanner && !dismissedBanners.has(selectedItem?.gid ?? '') ? rawBanner : null
 
+  const handleRequeue = useCallback(async () => {
+    if (!selectedItem) return
+
+    const inQueue = queue.find(q => q.id === selectedItem.id)
+    if (inQueue) {
+      await storage.setQueue(queue.map(q =>
+        q.id === selectedItem.id ? { ...q, status: 'queued' as const } : q,
+      ))
+      return
+    }
+
+    const inHistory = history.find(h => h.id === selectedItem.id)
+    if (inHistory) {
+      await storage.setHistory(history.filter(h => h.id !== selectedItem.id))
+      const currentQueue = await storage.getQueue()
+      await storage.setQueue([...currentQueue, { ...inHistory, status: 'queued' as const }])
+    }
+  }, [selectedItem, queue, history])
+
   const handleDismissBanner = useCallback(() => {
     if (selectedItem) {
       setDismissedBanners(prev => new Set([...prev, selectedItem.gid]))
@@ -100,6 +119,7 @@ export default function App() {
           onResume={() => selectedItem && resume(selectedItem.gid)}
           onRetryFailed={() => selectedItem && retryFailed(selectedItem.gid)}
           onCancel={() => selectedItem && cancel(selectedItem.gid)}
+          onRequeue={handleRequeue}
           onDismissBanner={handleDismissBanner}
         />
       </div>

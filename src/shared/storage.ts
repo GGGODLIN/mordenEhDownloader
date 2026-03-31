@@ -33,7 +33,12 @@ export const storage = {
   setImageLimits: (limits: ImageLimits) => set('imageLimits', limits),
 
   getHistory: () => get('history').then(h => h ?? []),
-  setHistory: (history: QueueItem[]) => set('history', history),
+  setHistory: async (history: QueueItem[]) => {
+    const settings = await get('settings') as Partial<Settings> | undefined
+    const max = settings?.historyMaxItems ?? DEFAULT_SETTINGS.historyMaxItems
+    const trimmed = max > 0 && history.length > max ? history.slice(0, max) : history
+    await set('history', trimmed)
+  },
 
   onChanged: (callback: (changes: Partial<Record<StorageKey, chrome.storage.StorageChange>>) => void) => {
     const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {

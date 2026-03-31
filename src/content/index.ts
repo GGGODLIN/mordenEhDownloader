@@ -3,11 +3,17 @@ import { parseGalleryUrl, parseGalleryMetadata } from '@shared/gallery-parser'
 import type { QueueItem } from '@shared/types'
 import { MESSAGE_TYPES } from '@shared/constants'
 
+function formatDate(ts: number): string {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 function init() {
   const urlInfo = parseGalleryUrl(window.location.href)
   if (!urlInfo) return
 
   const metadata = parseGalleryMetadata(document)
+  const galleryId = `${urlInfo.gid}_${urlInfo.token}`
 
   const container = document.createElement('div')
   container.className = 'ehd-inject-container'
@@ -21,36 +27,59 @@ function init() {
   addBtn.className = 'ehd-inject-btn'
   addBtn.textContent = 'Add to Queue'
 
-  addBtn.addEventListener('click', () => {
-    const item: QueueItem = {
-      id: `${urlInfo.gid}_${urlInfo.token}`,
-      gid: urlInfo.gid,
-      token: urlInfo.token,
-      title: metadata.title,
-      subtitle: metadata.subtitle,
-      category: metadata.category,
-      uploader: metadata.uploader,
-      pageCount: metadata.pageCount,
-      fileSize: metadata.fileSize,
-      thumbnailUrl: metadata.thumbnailUrl,
-      rating: metadata.rating,
-      postedDate: metadata.postedDate,
-      metaRows: metadata.metaRows,
-      tags: metadata.tags,
-      uploaderComment: metadata.uploaderComment,
-      pagesRange: rangeInput.value.trim(),
-      addedAt: Date.now(),
-      status: 'queued',
-    }
+  const buildItem = (): QueueItem => ({
+    id: galleryId,
+    gid: urlInfo.gid,
+    token: urlInfo.token,
+    title: metadata.title,
+    subtitle: metadata.subtitle,
+    category: metadata.category,
+    uploader: metadata.uploader,
+    pageCount: metadata.pageCount,
+    fileSize: metadata.fileSize,
+    thumbnailUrl: metadata.thumbnailUrl,
+    rating: metadata.rating,
+    postedDate: metadata.postedDate,
+    metaRows: metadata.metaRows,
+    tags: metadata.tags,
+    uploaderComment: metadata.uploaderComment,
+    pagesRange: rangeInput.value.trim(),
+    addedAt: Date.now(),
+    status: 'queued',
+  })
 
+  const sendToQueue = (item: QueueItem) => {
     chrome.runtime.sendMessage({ type: MESSAGE_TYPES.ADD_TO_QUEUE, payload: item })
-
     addBtn.textContent = 'Added ✓'
     addBtn.disabled = true
     setTimeout(() => {
       addBtn.textContent = 'Add to Queue'
       addBtn.disabled = false
     }, 2000)
+  }
+
+  addBtn.addEventListener('click', async () => {
+    addBtn.disabled = true
+
+    const dup = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.CHECK_DUPLICATE,
+      payload: { id: galleryId, title: metadata.title },
+    }) as { found: boolean; where: string | null; status: string | null; title: string | null; completedAt: number | null }
+
+    if (dup?.found) {
+      const location = dup.where === 'queue' ? 'queue' : 'history'
+      const statusText = dup.status ?? 'unknown'
+      const dateText = dup.completedAt ? ` (${formatDate(dup.completedAt)})` : ''
+      const titleText = dup.title ? `\n"${dup.title}"` : ''
+      const msg = `Found matching gallery in ${location}: ${statusText}${dateText}${titleText}\n\nAdd to queue anyway?`
+
+      if (!confirm(msg)) {
+        addBtn.disabled = false
+        return
+      }
+    }
+
+    sendToQueue(buildItem())
   })
 
   container.appendChild(rangeInput)

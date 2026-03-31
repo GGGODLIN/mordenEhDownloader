@@ -16,6 +16,7 @@ export interface QueueItem {
   uploaderComment: string
   pagesRange: string
   addedAt: number
+  completedAt?: number
   status: 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'canceled'
 }
 
@@ -57,6 +58,8 @@ export interface Settings {
   compressionLevel: number
   replaceWithFullWidth: boolean
   autoDownloadOnCancel: boolean
+  historyCheckDays: number
+  historyMaxItems: number
   peakHoursWarning: boolean
   imageLimitsWarning: boolean
 }

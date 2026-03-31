@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { QueueItem as QueueItemType } from '@shared/types'
 import QueueItemCard from './QueueItem'
+
+const PAGE_SIZE = 50
 
 interface SidebarProps {
   queue: QueueItemType[]
@@ -14,7 +16,15 @@ type Tab = 'queue' | 'history'
 
 export default function Sidebar({ queue, history, selectedId, onSelect, onRemove }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<Tab>('queue')
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const items = activeTab === 'queue' ? queue : history
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [activeTab])
+
+  const visibleItems = items.slice(0, visibleCount)
+  const hasMore = visibleCount < items.length
 
   return (
     <aside className="flex flex-col w-64 shrink-0 border-r border-zinc-200 dark:border-zinc-700/50
@@ -78,7 +88,7 @@ export default function Sidebar({ queue, history, selectedId, onSelect, onRemove
           </div>
         ) : (
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
-            {items.map(item => (
+            {visibleItems.map(item => (
               <QueueItemCard
                 key={item.id}
                 item={item}
@@ -87,6 +97,17 @@ export default function Sidebar({ queue, history, selectedId, onSelect, onRemove
                 onRemove={() => onRemove(item.id)}
               />
             ))}
+            {hasMore && (
+              <button
+                onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
+                className="w-full py-2.5 text-[10px] font-medium
+                  text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50
+                  dark:text-zinc-500 dark:hover:text-zinc-300 dark:hover:bg-zinc-800/40
+                  transition-colors"
+              >
+                Show more ({items.length - visibleCount} remaining)
+              </button>
+            )}
           </div>
         )}
       </div>

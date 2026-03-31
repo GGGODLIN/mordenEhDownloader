@@ -9,6 +9,7 @@ interface GalleryDetailProps {
   onResume: () => void
   onRetryFailed: () => void
   onCancel: () => void
+  onRequeue: () => void
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -44,7 +45,7 @@ function formatSpeed(bytesPerSec: number): string {
 }
 
 export default function GalleryDetail({
-  item, imageTasks, onStart, onPause, onResume, onRetryFailed, onCancel,
+  item, imageTasks, onStart, onPause, onResume, onRetryFailed, onCancel, onRequeue,
 }: GalleryDetailProps) {
   const progress = computeProgress(imageTasks)
   const overallSpeed = computeOverallSpeed(imageTasks)
@@ -201,7 +202,28 @@ export default function GalleryDetail({
               Retry Failed ({failedCount})
             </button>
           )}
-          {item.status !== 'completed' && item.status !== 'canceled' && (
+          {item.status === 'failed' && (
+            <button
+              onClick={onRequeue}
+              className="px-3 py-1.5 text-xs font-medium rounded-md
+                bg-sky-600 text-white hover:bg-sky-700
+                transition-colors active:scale-[0.98]"
+            >
+              Retry
+            </button>
+          )}
+          {item.status === 'canceled' && (
+            <button
+              onClick={onRequeue}
+              className="px-3 py-1.5 text-xs font-medium rounded-md
+                bg-sky-100 text-sky-700 hover:bg-sky-200
+                dark:bg-sky-900/40 dark:text-sky-300 dark:hover:bg-sky-900/60
+                transition-colors active:scale-[0.98]"
+            >
+              Re-queue
+            </button>
+          )}
+          {item.status !== 'completed' && item.status !== 'canceled' && item.status !== 'failed' && (
             <button
               onClick={onCancel}
               className="px-3 py-1.5 text-xs font-medium rounded-md

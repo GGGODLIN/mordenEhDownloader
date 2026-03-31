@@ -17,10 +17,17 @@ export function useDownloadEngine(settings: Settings | null) {
       managerRef.current.updateSettings(settings)
     }
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
     const unsubscribe = storage.onChanged((changes) => {
-      if (changes.queue) managerRef.current?.processQueue()
+      if (changes.queue) {
+        if (debounceTimer) clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(() => managerRef.current?.processQueue(), 300)
+      }
     })
-    return unsubscribe
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      unsubscribe()
+    }
   }, [settings])
 
   const getImageTasks = useCallback((galleryId: string): ImageTask[] => {
