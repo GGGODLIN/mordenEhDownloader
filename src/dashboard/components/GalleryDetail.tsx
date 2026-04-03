@@ -8,6 +8,7 @@ interface GalleryDetailProps {
   onPause: () => void
   onResume: () => void
   onRetryFailed: () => void
+  onRetryAll: () => void
   onCancel: () => void
   onRequeue: () => void
 }
@@ -45,7 +46,7 @@ function formatSpeed(bytesPerSec: number): string {
 }
 
 export default function GalleryDetail({
-  item, imageTasks, onStart, onPause, onResume, onRetryFailed, onCancel, onRequeue,
+  item, imageTasks, onStart, onPause, onResume, onRetryFailed, onRetryAll, onCancel, onRequeue,
 }: GalleryDetailProps) {
   const progress = computeProgress(imageTasks)
   const overallSpeed = computeOverallSpeed(imageTasks)
@@ -200,6 +201,17 @@ export default function GalleryDetail({
                 transition-colors active:scale-[0.98]"
             >
               Retry Failed ({failedCount})
+            </button>
+          )}
+          {item.status === 'downloading' && imageTasks.length > 0 && progress.done < imageTasks.length && (
+            <button
+              onClick={onRetryAll}
+              className="px-3 py-1.5 text-xs font-medium rounded-md
+                bg-violet-100 text-violet-800 hover:bg-violet-200
+                dark:bg-violet-900/40 dark:text-violet-300 dark:hover:bg-violet-900/60
+                transition-colors active:scale-[0.98]"
+            >
+              Retry All ({imageTasks.length - progress.done})
             </button>
           )}
           {item.status === 'failed' && (

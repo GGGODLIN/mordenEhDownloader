@@ -492,6 +492,22 @@ export class GalleryDownloader {
     })
   }
 
+  retryAllNonDone(threadCount: number): void {
+    this.stopPeriodicRetry()
+    this.state = {
+      ...this.state,
+      isPaused: false,
+      error: null,
+      imageTasks: this.state.imageTasks.map(t =>
+        t.status !== 'done'
+          ? { ...t, status: 'pending' as const, error: null, retryCount: 0, progress: 0, speed: 0 }
+          : t,
+      ),
+    }
+    this.emit()
+    this.downloadAll(threadCount)
+  }
+
   pause(): void {
     this.stopPeriodicRetry()
     this.state = { ...this.state, isPaused: true }

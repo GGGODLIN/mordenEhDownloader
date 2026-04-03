@@ -49,6 +49,7 @@ export function useDownloadEngine(settings: Settings | null) {
     pause: (id: string) => managerRef.current?.pauseGallery(id),
     resume: (id: string) => managerRef.current?.resumeGallery(id),
     retryFailed: (id: string) => managerRef.current?.retryFailed(id),
+    retryAllNonDone: (id: string) => managerRef.current?.retryAllNonDone(id),
     cancel: (id: string) => managerRef.current?.cancelGallery(id),
   }
 }

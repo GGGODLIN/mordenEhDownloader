@@ -143,6 +143,19 @@ export class QueueManager {
     this.updateItemStatus(id, 'downloading')
   }
 
+  retryAllNonDone(id: string): void {
+    const downloader = this.downloaders.get(id)
+    if (!downloader) return
+
+    const threadCount = Math.max(
+      1,
+      Math.floor(this.settings.threadCount / this.settings.maxConcurrentGalleries),
+    )
+
+    downloader.retryAllNonDone(threadCount)
+    this.updateItemStatus(id, 'downloading')
+  }
+
   retryFailed(id: string): void {
     const downloader = this.downloaders.get(id)
     if (!downloader) return

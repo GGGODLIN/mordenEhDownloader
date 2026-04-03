@@ -15,6 +15,7 @@ interface MainAreaProps {
   onPause: () => void
   onResume: () => void
   onRetryFailed: () => void
+  onRetryAll: () => void
   onCancel: () => void
   onRequeue: () => void
   onDismissBanner: () => void
@@ -22,7 +23,7 @@ interface MainAreaProps {
 
 export default function MainArea({
   selectedItem, imageTasks, banner,
-  onStart, onPause, onResume, onRetryFailed, onCancel, onRequeue, onDismissBanner,
+  onStart, onPause, onResume, onRetryFailed, onRetryAll, onCancel, onRequeue, onDismissBanner,
 }: MainAreaProps) {
   return (
     <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-900">
@@ -42,6 +43,7 @@ export default function MainArea({
           onPause={onPause}
           onResume={onResume}
           onRetryFailed={onRetryFailed}
+          onRetryAll={onRetryAll}
           onCancel={onCancel}
           onRequeue={onRequeue}
         />

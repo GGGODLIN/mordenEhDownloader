@@ -80,9 +80,12 @@ export async function fetchImageFromPage(
 ): Promise<FetchImageResult> {
   callbacks.onStatus('fetching')
 
+  const timeoutMs = (settings.timeout > 0 ? settings.timeout : 300) * 1000
+
   let pageHtml: string
   try {
-    const pageRes = await fetch(pageUrl, { credentials: 'include', signal })
+    const pageSignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+    const pageRes = await fetch(pageUrl, { credentials: 'include', signal: pageSignal })
     if (!pageRes.ok) throw new Error(`HTTP ${pageRes.status}`)
     pageHtml = await pageRes.text()
   } catch (err) {
@@ -136,31 +139,41 @@ export async function fetchImageFromPage(
 
   const parsedFileName = extractFileName(pageHtml)
 
+  const controller = new AbortController()
+  let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+
+  const resetWatchdog = () => {
+    if (watchdogTimer) clearTimeout(watchdogTimer)
+    watchdogTimer = setTimeout(() => {
+      controller.abort('Watchdog timeout')
+    }, WATCHDOG_TIMEOUT_MS)
+  }
+
+  const totalTimeout = setTimeout(() => {
+    controller.abort('Request timeout')
+  }, timeoutMs)
+
+  const cleanup = () => {
+    if (watchdogTimer) clearTimeout(watchdogTimer)
+    clearTimeout(totalTimeout)
+  }
+
   let imageResponse: Response
   try {
-    const controller = new AbortController()
-
-    let watchdogTimer: ReturnType<typeof setTimeout> | null = null
-
-    const resetWatchdog = () => {
-      if (watchdogTimer) clearTimeout(watchdogTimer)
-      watchdogTimer = setTimeout(() => {
-        controller.abort()
-      }, WATCHDOG_TIMEOUT_MS)
-    }
 
     resetWatchdog()
 
-    const fetchSignal = controller.signal
+    const fetchSignal = AbortSignal.any([signal, controller.signal])
 
     imageResponse = await fetch(finalImageUrl, {
       credentials: 'include',
       signal: fetchSignal,
     })
 
-    if (watchdogTimer) clearTimeout(watchdogTimer)
+    resetWatchdog()
 
     if (!imageResponse.body) {
+      cleanup()
       return {
         imageName: '',
         nl,
@@ -187,6 +200,7 @@ export async function fetchImageFromPage(
 
     while (true) {
       if (signal.aborted) {
+        cleanup()
         reader.cancel()
         return {
           imageName: '',
@@ -218,7 +232,7 @@ export async function fetchImageFromPage(
       }
     }
 
-    if (watchdogTimer) clearTimeout(watchdogTimer)
+    cleanup()
 
     const totalBytes = chunks.reduce((sum, c) => sum + c.byteLength, 0)
     const buffer = new ArrayBuffer(totalBytes)
@@ -280,10 +294,11 @@ export async function fetchImageFromPage(
 
     return { imageName, nl, error: null }
   } catch (err) {
+    cleanup()
     if (signal.aborted) {
       return {
         imageName: '',
-        nl: null,
+        nl,
         error: {
           type: 'network_error',
           message: 'Aborted',
@@ -297,7 +312,7 @@ export async function fetchImageFromPage(
     const isTimeout = err instanceof Error && err.name === 'AbortError'
     return {
       imageName: '',
-      nl: null,
+      nl,
       error: {
         type: isTimeout ? 'timeout' : 'network_error',
         message: err instanceof Error ? err.message : 'Network error',
