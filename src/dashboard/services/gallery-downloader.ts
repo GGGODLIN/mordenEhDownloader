@@ -34,6 +34,7 @@ export class GalleryDownloader {
   private periodicRetryTimer: ReturnType<typeof setTimeout> | null = null
   private forceResizedForAll = false
   private forceOriginalForAll = false
+  private downloadGeneration = 0
 
   constructor(
     info: GalleryInfo,
@@ -141,6 +142,8 @@ export class GalleryDownloader {
   }
 
   private async downloadAll(threadCount: number): Promise<DownloadResult> {
+    this.downloadGeneration++
+    const currentGeneration = this.downloadGeneration
     const signal = this.abortController.signal
     let taskIndex = 0
 
@@ -157,7 +160,7 @@ export class GalleryDownloader {
     }
 
     const runThread = async (): Promise<void> => {
-      while (!signal.aborted && !this.state.isPaused) {
+      while (!signal.aborted && !this.state.isPaused && currentGeneration === this.downloadGeneration) {
         const idx = getNextPendingIndex()
         if (idx === -1) break
 
@@ -265,6 +268,7 @@ export class GalleryDownloader {
     await Promise.all(threads)
 
     if (signal.aborted) return 'aborted'
+    if (currentGeneration !== this.downloadGeneration) return 'aborted'
 
     const failed = this.state.imageTasks.filter(t => t.status === 'failed')
 
@@ -401,96 +405,11 @@ export class GalleryDownloader {
       isPaused: false,
       error: null,
       imageTasks: this.state.imageTasks.map(t =>
-        t.status === 'failed' ? { ...t, status: 'pending', error: null } : t,
+        t.status === 'failed' ? { ...t, status: 'pending' as const, error: null } : t,
       ),
     }
     this.emit()
-
-    let taskIndex = 0
-    const getNextPendingIndex = (): number => {
-      while (taskIndex < this.state.imageTasks.length) {
-        const task = this.state.imageTasks[taskIndex]
-        if (task.status === 'pending') {
-          taskIndex++
-          return taskIndex - 1
-        }
-        taskIndex++
-      }
-      return -1
-    }
-
-    const signal = this.abortController.signal
-
-    const runThread = async (): Promise<void> => {
-      while (!signal.aborted) {
-        const idx = getNextPendingIndex()
-        if (idx === -1) break
-
-        this.updateTask(idx, { status: 'fetching' })
-
-        let currentPageUrl = this.state.imageTasks[idx].pageUrl
-        const taskNl = this.state.imageTasks[idx].nl
-        if (taskNl) {
-          const separator = currentPageUrl.includes('?') ? '&' : '?'
-          currentPageUrl = `${currentPageUrl}${separator}nl=${taskNl}`
-        }
-
-        const result = await fetchImageFromPage(
-          currentPageUrl,
-          this.info.gid,
-          this.state.imageTasks[idx].index + 1,
-          this.settings,
-          signal,
-          {
-            onProgress: (loaded, total, speed) => {
-              this.updateTask(idx, {
-                progress: total > 0 ? loaded / total : 0,
-                speed,
-              })
-            },
-            onStatus: (status) => {
-              if (status === 'hashing') this.updateTask(idx, { status: 'hashing' })
-            },
-          },
-          this.forceResizedForAll ? true : undefined,
-        )
-
-        if (result.nl) {
-          this.updateTask(idx, { nl: result.nl })
-        }
-
-        if (result.error === null) {
-          this.updateTask(idx, {
-            status: 'done',
-            imageName: result.imageName,
-            progress: 1,
-            error: null,
-          })
-          if (this.settings.delayRequest > 0) {
-            await new Promise(r => setTimeout(r, this.settings.delayRequest * 1000))
-          }
-        } else {
-          if (result.error.type === 'account_suspended' && !this.settings.forceAsLoggedIn) {
-            this.forceResizedForAll = true
-          }
-          this.updateTask(idx, { status: 'failed', error: result.error.message })
-          if (this.settings.delayRequest > 0) {
-            await new Promise(r => setTimeout(r, this.settings.delayRequest * 1000))
-          }
-        }
-      }
-    }
-
-    const threads = Array.from({ length: threadCount }, () => runThread())
-    Promise.all(threads).then(async () => {
-      if (signal.aborted) return
-      const stillFailed = this.state.imageTasks.filter(t => t.status === 'failed')
-      if (stillFailed.length === 0) {
-        await this.finalize()
-      } else {
-        this.startPeriodicRetry(threadCount)
-      }
-    })
+    this.downloadAll(threadCount)
   }
 
   retryWithOriginal(threadCount: number): void {
