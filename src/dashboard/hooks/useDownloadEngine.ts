@@ -50,6 +50,7 @@ export function useDownloadEngine(settings: Settings | null) {
     resume: (id: string) => managerRef.current?.resumeGallery(id),
     retryFailed: (id: string) => managerRef.current?.retryFailed(id),
     retryAllNonDone: (id: string) => managerRef.current?.retryAllNonDone(id),
+    retryWithOriginal: (id: string) => managerRef.current?.retryWithOriginal(id),
     cancel: (id: string) => managerRef.current?.cancelGallery(id),
   }
 }

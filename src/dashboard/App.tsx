@@ -13,7 +13,7 @@ export default function App() {
   const history = useHistory()
   const settings = useSettings()
   const imageLimits = useImageLimits()
-  const { getImageTasks, getBanner, start, pause, resume, retryFailed, retryAllNonDone, cancel } = useDownloadEngine(settings)
+  const { getImageTasks, getBanner, start, pause, resume, retryFailed, retryAllNonDone, retryWithOriginal, cancel } = useDownloadEngine(settings)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -119,6 +119,7 @@ export default function App() {
           onResume={() => selectedItem && resume(selectedItem.gid)}
           onRetryFailed={() => selectedItem && retryFailed(selectedItem.gid)}
           onRetryAll={() => selectedItem && retryAllNonDone(selectedItem.gid)}
+          onRetryOriginal={() => selectedItem && retryWithOriginal(selectedItem.gid)}
           onCancel={() => selectedItem && cancel(selectedItem.gid)}
           onRequeue={handleRequeue}
           onDismissBanner={handleDismissBanner}

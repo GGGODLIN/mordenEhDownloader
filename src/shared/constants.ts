@@ -16,7 +16,7 @@ export const DEFAULT_SETTINGS: Settings = {
   numberSeparator: '：',
   numberRealIndex: false,
   checksum: true,
-  forceResized: false,
+  forceResized: true,
   forceAsLoggedIn: false,
   originalDownloadDomain: '',
   saveGalleryInfo: true,

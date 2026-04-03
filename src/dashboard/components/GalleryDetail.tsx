@@ -9,6 +9,7 @@ interface GalleryDetailProps {
   onResume: () => void
   onRetryFailed: () => void
   onRetryAll: () => void
+  onRetryOriginal: () => void
   onCancel: () => void
   onRequeue: () => void
 }
@@ -46,7 +47,7 @@ function formatSpeed(bytesPerSec: number): string {
 }
 
 export default function GalleryDetail({
-  item, imageTasks, onStart, onPause, onResume, onRetryFailed, onRetryAll, onCancel, onRequeue,
+  item, imageTasks, onStart, onPause, onResume, onRetryFailed, onRetryAll, onRetryOriginal, onCancel, onRequeue,
 }: GalleryDetailProps) {
   const progress = computeProgress(imageTasks)
   const overallSpeed = computeOverallSpeed(imageTasks)
@@ -204,15 +205,27 @@ export default function GalleryDetail({
             </button>
           )}
           {item.status === 'downloading' && imageTasks.length > 0 && progress.done < imageTasks.length && (
-            <button
-              onClick={onRetryAll}
-              className="px-3 py-1.5 text-xs font-medium rounded-md
-                bg-violet-100 text-violet-800 hover:bg-violet-200
-                dark:bg-violet-900/40 dark:text-violet-300 dark:hover:bg-violet-900/60
-                transition-colors active:scale-[0.98]"
-            >
-              Retry All ({imageTasks.length - progress.done})
-            </button>
+            <>
+              <button
+                onClick={onRetryAll}
+                className="px-3 py-1.5 text-xs font-medium rounded-md
+                  bg-violet-100 text-violet-800 hover:bg-violet-200
+                  dark:bg-violet-900/40 dark:text-violet-300 dark:hover:bg-violet-900/60
+                  transition-colors active:scale-[0.98]"
+              >
+                Retry All ({imageTasks.length - progress.done})
+              </button>
+              <button
+                onClick={onRetryOriginal}
+                className="px-3 py-1.5 text-xs font-medium rounded-md
+                  bg-orange-100 text-orange-800 hover:bg-orange-200
+                  dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/60
+                  transition-colors active:scale-[0.98]"
+                title="Retry non-done images using original (full-size) images. May consume GP/image limits."
+              >
+                Retry Original
+              </button>
+            </>
           )}
           {item.status === 'failed' && (
             <button

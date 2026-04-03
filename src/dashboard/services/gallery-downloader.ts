@@ -33,6 +33,7 @@ export class GalleryDownloader {
   private abortController: AbortController
   private periodicRetryTimer: ReturnType<typeof setTimeout> | null = null
   private forceResizedForAll = false
+  private forceOriginalForAll = false
 
   constructor(
     info: GalleryInfo,
@@ -207,7 +208,7 @@ export class GalleryDownloader {
                 }
               },
             },
-            this.forceResizedForAll ? true : undefined,
+            this.forceOriginalForAll ? false : this.forceResizedForAll ? true : undefined,
           )
 
           if (result.nl) {
@@ -490,6 +491,12 @@ export class GalleryDownloader {
         this.startPeriodicRetry(threadCount)
       }
     })
+  }
+
+  retryWithOriginal(threadCount: number): void {
+    this.forceOriginalForAll = true
+    this.forceResizedForAll = false
+    this.retryAllNonDone(threadCount)
   }
 
   retryAllNonDone(threadCount: number): void {
