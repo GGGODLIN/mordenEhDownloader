@@ -42,9 +42,41 @@ export function useDownloadEngine(settings: Settings | null) {
     return { type: bannerType, message: state.error.message }
   }, [downloadStates])
 
+  const speedHistoryRef = useRef<{ time: number; speed: number }[]>([])
+  const SPEED_WINDOW_MS = 3_000
+
+  const getTotalSpeed = useCallback((): number => {
+    let instantSpeed = 0
+    for (const state of downloadStates.values()) {
+      for (const task of state.imageTasks) {
+        if (task.status === 'fetching') {
+          instantSpeed += task.speed
+        }
+      }
+    }
+
+    const now = Date.now()
+    const history = speedHistoryRef.current
+    history.push({ time: now, speed: instantSpeed })
+
+    const cutoff = now - SPEED_WINDOW_MS
+    while (history.length > 0 && history[0].time < cutoff) {
+      history.shift()
+    }
+
+    if (history.length === 0) return 0
+    return history.reduce((sum, s) => sum + s.speed, 0) / history.length
+  }, [downloadStates])
+
+  const getActiveThreads = useCallback((galleryId: string): number => {
+    return downloadStates.get(galleryId)?.activeThreads ?? 0
+  }, [downloadStates])
+
   return {
     getImageTasks,
     getBanner,
+    getTotalSpeed,
+    getActiveThreads,
     start: (id: string) => managerRef.current?.startGallery(id),
     pause: (id: string) => managerRef.current?.pauseGallery(id),
     resume: (id: string) => managerRef.current?.resumeGallery(id),
@@ -52,5 +84,6 @@ export function useDownloadEngine(settings: Settings | null) {
     retryAllNonDone: (id: string) => managerRef.current?.retryAllNonDone(id),
     retryWithOriginal: (id: string) => managerRef.current?.retryWithOriginal(id),
     cancel: (id: string) => managerRef.current?.cancelGallery(id),
+    setThreadOverride: (id: string, count: number | undefined) => managerRef.current?.setThreadCountOverride(id, count),
   }
 }

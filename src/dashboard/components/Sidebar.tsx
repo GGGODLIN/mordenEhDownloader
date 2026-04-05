@@ -10,11 +10,12 @@ interface SidebarProps {
   selectedId: string | null
   onSelect: (id: string) => void
   onRemove: (id: string) => void
+  onRetryAllFailed: () => void
 }
 
 type Tab = 'queue' | 'history'
 
-export default function Sidebar({ queue, history, selectedId, onSelect, onRemove }: SidebarProps) {
+export default function Sidebar({ queue, history, selectedId, onSelect, onRemove, onRetryAllFailed }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<Tab>('queue')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const items = activeTab === 'queue' ? queue : history
@@ -69,6 +70,21 @@ export default function Sidebar({ queue, history, selectedId, onSelect, onRemove
           )}
         </button>
       </div>
+
+      {activeTab === 'queue' && queue.some(item => item.status === 'failed') && (
+        <div className="px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-700/50">
+          <button
+            onClick={onRetryAllFailed}
+            className="w-full px-2.5 py-1.5 text-[10px] font-medium rounded-md
+              text-amber-600 dark:text-amber-400
+              bg-amber-50 dark:bg-amber-900/20
+              hover:bg-amber-100 dark:hover:bg-amber-900/30
+              transition-colors"
+          >
+            Retry All Failed ({queue.filter(item => item.status === 'failed').length})
+          </button>
+        </div>
+      )}
 
       <div key={activeTab} className="flex-1 overflow-y-auto">
         {items.length === 0 ? (

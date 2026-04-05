@@ -1,6 +1,7 @@
 import type { Settings, QueueItem } from '@shared/types'
 import { storage } from '@shared/storage'
 import { GalleryDownloader, type GalleryDownloadState } from './gallery-downloader'
+import { setOnRecovered } from './ban-tracker'
 
 export class QueueManager {
   private settings: Settings
@@ -8,6 +9,7 @@ export class QueueManager {
   private downloaders: Map<string, GalleryDownloader> = new Map()
   private states: Map<string, GalleryDownloadState> = new Map()
   private activeIds: Set<string> = new Set()
+  private completedGids: Set<string> = new Set()
   private processing = false
   private pendingProcess = false
 
@@ -17,6 +19,60 @@ export class QueueManager {
   ) {
     this.settings = settings
     this.onStateChange = onStateChange
+    setOnRecovered(() => this.recoverFromBan())
+  }
+
+  private get effectiveThreadCount(): number {
+    return this.settings.slowMode ? this.settings.slowThreadCount : this.settings.threadCount
+  }
+
+  private get effectiveMaxConcurrent(): number {
+    return this.settings.slowMode ? this.settings.slowMaxConcurrentGalleries : this.settings.maxConcurrentGalleries
+  }
+
+  private get perGalleryThreadCount(): number {
+    return Math.max(1, Math.floor(this.effectiveThreadCount / this.effectiveMaxConcurrent))
+  }
+
+  private getThreadCountForGallery(gid: string): number {
+    const downloader = this.downloaders.get(gid)
+    const override = downloader?.getInfo().threadCountOverride
+    return override ?? this.perGalleryThreadCount
+  }
+
+  private async recoverFromBan(): Promise<void> {
+    await this.doRecovery()
+    setTimeout(() => this.doRecovery(), 3_000)
+    setTimeout(() => this.doRecovery(), 8_000)
+  }
+
+  private async doRecovery(): Promise<void> {
+    for (const [id, downloader] of this.downloaders) {
+      if (this.completedGids.has(id)) continue
+      const state = downloader.getState()
+      const hasFailed = state.imageTasks.some(t => t.status === 'failed')
+      if (state.isPaused || hasFailed) {
+        downloader.retryAllNonDone(this.getThreadCountForGallery(id))
+        this.activeIds.add(id)
+        await this.updateItemStatus(id, 'downloading')
+      }
+    }
+
+    const queue = await storage.getQueue()
+    const stalled = queue.filter(item =>
+      (item.status === 'failed' || item.status === 'paused') &&
+      !this.activeIds.has(item.gid) &&
+      !this.downloaders.has(item.gid) &&
+      !this.completedGids.has(item.gid),
+    )
+    if (stalled.length > 0) {
+      const newQueue = queue.map(item =>
+        stalled.some(s => s.gid === item.gid) ? { ...item, status: 'queued' as const } : item,
+      )
+      await storage.setQueue(newQueue)
+    }
+
+    await this.processQueue()
   }
 
   updateSettings(settings: Settings): void {
@@ -31,9 +87,19 @@ export class QueueManager {
     this.processing = true
 
     try {
-      const queue = await storage.getQueue()
-      const maxActive = this.settings.maxConcurrentGalleries
-      const available = maxActive - this.activeIds.size
+      let queue = await storage.getQueue()
+
+      const orphaned = queue.filter(item =>
+        (item.status === 'downloading' || item.status === 'paused') && !this.activeIds.has(item.gid),
+      )
+      if (orphaned.length > 0) {
+        queue = queue.map(item =>
+          orphaned.some(o => o.gid === item.gid) ? { ...item, status: 'queued' as const } : item,
+        )
+        await storage.setQueue(queue)
+      }
+
+      const available = this.effectiveMaxConcurrent - this.activeIds.size
 
       if (available <= 0) return
 
@@ -56,23 +122,18 @@ export class QueueManager {
 
   private async startDownload(item: QueueItem): Promise<void> {
     if (this.activeIds.has(item.gid)) return
-
-    const threadCount = Math.max(
-      1,
-      Math.floor(this.settings.threadCount / this.settings.maxConcurrentGalleries),
-    )
+    if (this.completedGids.has(item.gid)) return
 
     const downloader = new GalleryDownloader(item, this.settings, (state) => {
       this.states.set(item.gid, state)
       this.onStateChange(new Map(this.states))
     })
 
-    this.downloaders.set(item.gid, downloader)
-    this.activeIds.add(item.gid)
+    downloader.setOnTag(async (tag) => {
+      await this.tagItem(item.gid, tag)
+    })
 
-    await this.updateItemStatus(item.gid, 'downloading')
-
-    downloader.start(threadCount).then(async (result) => {
+    downloader.setOnResult(async (result) => {
       switch (result) {
         case 'completed':
           await this.onDownloadComplete(item.gid)
@@ -80,21 +141,39 @@ export class QueueManager {
         case 'paused':
           await this.updateItemStatus(item.gid, 'paused')
           break
-        case 'aborted':
-          break
-        case 'no_pages':
         case 'failed':
           await this.updateItemStatus(item.gid, 'failed')
           this.activeIds.delete(item.gid)
-          this.downloaders.delete(item.gid)
           await this.processQueue()
           break
+      }
+    })
+
+    this.downloaders.set(item.gid, downloader)
+    this.activeIds.add(item.gid)
+
+    await this.updateItemStatus(item.gid, 'downloading')
+
+    const startThreads = item.threadCountOverride ?? this.perGalleryThreadCount
+    downloader.start(startThreads).then(async (result) => {
+      if (result === 'no_pages' || result === 'failed') {
+        await this.updateItemStatus(item.gid, 'failed')
+        this.activeIds.delete(item.gid)
+        this.downloaders.delete(item.gid)
+        await this.processQueue()
       }
     })
   }
 
   private async onDownloadComplete(galleryId: string): Promise<void> {
+    if (this.completedGids.has(galleryId)) return
+    this.completedGids.add(galleryId)
     this.activeIds.delete(galleryId)
+
+    const downloader = this.downloaders.get(galleryId)
+    if (downloader) {
+      downloader.dispose()
+    }
 
     const queue = await storage.getQueue()
     const item = queue.find(q => q.gid === galleryId)
@@ -114,6 +193,14 @@ export class QueueManager {
     await this.processQueue()
   }
 
+  private async tagItem(galleryId: string, tag: string): Promise<void> {
+    const queue = await storage.getQueue()
+    const newQueue = queue.map(item =>
+      item.gid === galleryId ? { ...item, tag } : item,
+    )
+    await storage.setQueue(newQueue)
+  }
+
   private async updateItemStatus(galleryId: string, status: QueueItem['status']): Promise<void> {
     const queue = await storage.getQueue()
     const newQueue = queue.map(item =>
@@ -131,55 +218,55 @@ export class QueueManager {
   }
 
   resumeGallery(id: string): void {
+    if (this.completedGids.has(id)) return
     const downloader = this.downloaders.get(id)
     if (!downloader) return
 
-    const threadCount = Math.max(
-      1,
-      Math.floor(this.settings.threadCount / this.settings.maxConcurrentGalleries),
-    )
-
-    downloader.resume(threadCount)
+    downloader.resume(this.getThreadCountForGallery(id))
     this.updateItemStatus(id, 'downloading')
   }
 
   retryWithOriginal(id: string): void {
+    if (this.completedGids.has(id)) return
     const downloader = this.downloaders.get(id)
     if (!downloader) return
 
-    const threadCount = Math.max(
-      1,
-      Math.floor(this.settings.threadCount / this.settings.maxConcurrentGalleries),
-    )
-
-    downloader.retryWithOriginal(threadCount)
+    this.activeIds.add(id)
+    downloader.retryWithOriginal(this.getThreadCountForGallery(id))
     this.updateItemStatus(id, 'downloading')
   }
 
   retryAllNonDone(id: string): void {
+    if (this.completedGids.has(id)) return
     const downloader = this.downloaders.get(id)
     if (!downloader) return
 
-    const threadCount = Math.max(
-      1,
-      Math.floor(this.settings.threadCount / this.settings.maxConcurrentGalleries),
-    )
-
-    downloader.retryAllNonDone(threadCount)
+    this.activeIds.add(id)
+    downloader.retryAllNonDone(this.getThreadCountForGallery(id))
     this.updateItemStatus(id, 'downloading')
   }
 
   retryFailed(id: string): void {
+    if (this.completedGids.has(id)) return
     const downloader = this.downloaders.get(id)
     if (!downloader) return
 
-    const threadCount = Math.max(
-      1,
-      Math.floor(this.settings.threadCount / this.settings.maxConcurrentGalleries),
-    )
-
-    downloader.retryAllFailed(threadCount)
+    this.activeIds.add(id)
+    downloader.retryFailedWithOriginal(this.getThreadCountForGallery(id))
     this.updateItemStatus(id, 'downloading')
+  }
+
+  async setThreadCountOverride(id: string, count: number | undefined): Promise<void> {
+    const downloader = this.downloaders.get(id)
+    if (downloader) {
+      downloader.updateInfo({ threadCountOverride: count })
+    }
+
+    const queue = await storage.getQueue()
+    const newQueue = queue.map(item =>
+      item.gid === id ? { ...item, threadCountOverride: count } : item,
+    )
+    await storage.setQueue(newQueue)
   }
 
   async startGallery(id: string): Promise<void> {

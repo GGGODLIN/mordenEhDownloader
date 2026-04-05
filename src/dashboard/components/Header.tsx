@@ -2,10 +2,12 @@ interface HeaderProps {
   imageLimitsCurrent: number
   imageLimitsTotal: number
   estimatedCost?: number
+  slowMode: boolean
+  onToggleSlowMode: () => void
   onOpenSettings: () => void
 }
 
-export default function Header({ imageLimitsCurrent, imageLimitsTotal, estimatedCost, onOpenSettings }: HeaderProps) {
+export default function Header({ imageLimitsCurrent, imageLimitsTotal, estimatedCost, slowMode, onToggleSlowMode, onOpenSettings }: HeaderProps) {
   const projected = imageLimitsCurrent + (estimatedCost ?? 0)
   const limitsPercent = imageLimitsTotal > 0 ? (imageLimitsCurrent / imageLimitsTotal) * 100 : 0
   const isNearLimit = limitsPercent > 80 || (imageLimitsTotal > 0 && projected > imageLimitsTotal)
@@ -28,6 +30,28 @@ export default function Header({ imageLimitsCurrent, imageLimitsTotal, estimated
       </div>
 
       <div className="flex items-center gap-3">
+        <button
+          onClick={onToggleSlowMode}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium
+            transition-colors active:scale-[0.97] ${
+            slowMode
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+              : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+          }`}
+          title={slowMode ? 'Slow mode ON — click to switch to normal' : 'Normal mode — click to switch to slow'}
+        >
+          {slowMode ? (
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+            </svg>
+          ) : (
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+            </svg>
+          )}
+          {slowMode ? 'SLOW' : 'FAST'}
+        </button>
+
         {hasLimitsData && (
           <div className="flex items-center gap-2 px-2.5 py-1 rounded-md
             bg-zinc-50 dark:bg-zinc-800">

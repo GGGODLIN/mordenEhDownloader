@@ -13,23 +13,28 @@ export default function App() {
   const history = useHistory()
   const settings = useSettings()
   const imageLimits = useImageLimits()
-  const { getImageTasks, getBanner, start, pause, resume, retryFailed, retryAllNonDone, retryWithOriginal, cancel } = useDownloadEngine(settings)
+  const { getImageTasks, getBanner, getTotalSpeed, getActiveThreads, start, pause, resume, retryFailed, retryAllNonDone, retryWithOriginal, cancel, setThreadOverride } = useDownloadEngine(settings)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [dismissedBanners, setDismissedBanners] = useState<Set<string>>(new Set())
 
+  const totalSpeed = getTotalSpeed()
+
   useEffect(() => {
     const downloadingCount = queue.filter(item => item.status === 'downloading').length
     const totalQueue = queue.length
     if (downloadingCount > 0) {
-      document.title = `[${downloadingCount}/${totalQueue}] E-Hentai Downloader`
+      const speedStr = totalSpeed >= 1024
+        ? `${(totalSpeed / 1024).toFixed(1)} MB/s`
+        : `${Math.round(totalSpeed)} KB/s`
+      document.title = `[${speedStr}] [${downloadingCount}/${totalQueue}] EH Downloader`
     } else if (totalQueue > 0) {
       document.title = `[${totalQueue}] E-Hentai Downloader`
     } else {
       document.title = 'E-Hentai Downloader'
     }
-  }, [queue])
+  }, [queue, totalSpeed])
 
   useEffect(() => {
     const hasDownloading = queue.some(item => item.status === 'downloading')
@@ -64,6 +69,7 @@ export default function App() {
   const selectedItem = [...queue, ...history].find(item => item.id === selectedId) ?? null
 
   const imageTasks = selectedItem ? getImageTasks(selectedItem.gid) : []
+  const activeThreads = selectedItem ? getActiveThreads(selectedItem.gid) : 0
   const rawBanner = selectedItem ? getBanner(selectedItem.gid) : null
   const banner = rawBanner && !dismissedBanners.has(selectedItem?.gid ?? '') ? rawBanner : null
 
@@ -86,6 +92,13 @@ export default function App() {
     }
   }, [selectedItem, queue, history])
 
+  const handleRetryAllFailed = useCallback(async () => {
+    const newQueue = queue.map(item =>
+      item.status === 'failed' ? { ...item, status: 'queued' as const } : item,
+    )
+    await storage.setQueue(newQueue)
+  }, [queue])
+
   const handleDismissBanner = useCallback(() => {
     if (selectedItem) {
       setDismissedBanners(prev => new Set([...prev, selectedItem.gid]))
@@ -100,6 +113,12 @@ export default function App() {
         imageLimitsCurrent={imageLimits.current}
         imageLimitsTotal={imageLimits.total}
         estimatedCost={estimatedCost}
+        slowMode={settings?.slowMode ?? false}
+        onToggleSlowMode={() => {
+          if (!settings) return
+          const next = { ...settings, slowMode: !settings.slowMode }
+          storage.setSettings(next)
+        }}
         onOpenSettings={() => setShowSettings(true)}
       />
       <div className="flex flex-1 min-h-0">
@@ -109,10 +128,12 @@ export default function App() {
           selectedId={selectedId}
           onSelect={setSelectedId}
           onRemove={handleRemove}
+          onRetryAllFailed={handleRetryAllFailed}
         />
         <MainArea
           selectedItem={selectedItem}
           imageTasks={imageTasks}
+          activeThreads={activeThreads}
           banner={banner}
           onStart={() => selectedItem && start(selectedItem.gid)}
           onPause={() => selectedItem && pause(selectedItem.gid)}
@@ -122,6 +143,7 @@ export default function App() {
           onRetryOriginal={() => selectedItem && retryWithOriginal(selectedItem.gid)}
           onCancel={() => selectedItem && cancel(selectedItem.gid)}
           onRequeue={handleRequeue}
+          onSetThreadOverride={(count) => selectedItem && setThreadOverride(selectedItem.gid, count)}
           onDismissBanner={handleDismissBanner}
         />
       </div>

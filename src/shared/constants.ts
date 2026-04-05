@@ -27,6 +27,9 @@ export const DEFAULT_SETTINGS: Settings = {
   historyMaxItems: 500,
   peakHoursWarning: true,
   imageLimitsWarning: true,
+  slowMode: false,
+  slowThreadCount: 1,
+  slowMaxConcurrentGalleries: 1,
 }
 
 export const TEMPLATE_VARS = [

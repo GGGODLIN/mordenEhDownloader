@@ -4,12 +4,14 @@ import { fetchAllPageUrls } from './page-fetcher'
 import { fetchImageFromPage } from './image-fetcher'
 import { packAndDownload } from './zip-packer'
 import { storageManager } from './storage-manager'
+import { recordBan } from './ban-tracker'
 
 export interface GalleryDownloadState {
   galleryId: string
   imageTasks: ImageTask[]
   isPaused: boolean
   error: ClassifiedError | null
+  activeThreads: number
 }
 
 export type DownloadResult = 'completed' | 'failed' | 'paused' | 'aborted' | 'no_pages'
@@ -36,6 +38,17 @@ export class GalleryDownloader {
   private forceOriginalForAll = false
   private downloadGeneration = 0
 
+  private disposed = false
+  private generationController: AbortController | null = null
+  private stallMonitorTimer: ReturnType<typeof setInterval> | null = null
+  private stallLastDoneCount = 0
+  private stallLastChangeTime = 0
+  private stallRetryStage = 0
+  private stallThreadCount = 1
+
+  private onResult: ((result: DownloadResult) => void) | null = null
+  private onTag: ((tag: string) => void) | null = null
+
   constructor(
     info: GalleryInfo,
     settings: Settings,
@@ -50,10 +63,20 @@ export class GalleryDownloader {
       imageTasks: [],
       isPaused: false,
       error: null,
+      activeThreads: 0,
     }
   }
 
+  setOnResult(cb: (result: DownloadResult) => void): void {
+    this.onResult = cb
+  }
+
+  setOnTag(cb: (tag: string) => void): void {
+    this.onTag = cb
+  }
+
   private emit(): void {
+    if (this.disposed) return
     this.onStateChange({ ...this.state, imageTasks: [...this.state.imageTasks] })
   }
 
@@ -90,6 +113,7 @@ export class GalleryDownloader {
       )
     } catch {
       if (signal.aborted) return 'aborted'
+      recordBan()
       this.state = {
         ...this.state,
         isPaused: true,
@@ -133,6 +157,7 @@ export class GalleryDownloader {
       retryCount: 0,
       error: null,
       nl: null,
+      forceOriginal: false,
     }))
 
     this.state = { ...this.state, imageTasks: tasks }
@@ -144,8 +169,17 @@ export class GalleryDownloader {
   private async downloadAll(threadCount: number): Promise<DownloadResult> {
     this.downloadGeneration++
     const currentGeneration = this.downloadGeneration
+
+    if (this.generationController) {
+      this.generationController.abort()
+    }
+    this.generationController = new AbortController()
+
     const signal = this.abortController.signal
+    const genSignal = this.generationController.signal
     let taskIndex = 0
+
+    this.startStallMonitor(threadCount)
 
     const getNextPendingIndex = (): number => {
       while (taskIndex < this.state.imageTasks.length) {
@@ -160,7 +194,10 @@ export class GalleryDownloader {
     }
 
     const runThread = async (): Promise<void> => {
-      while (!signal.aborted && !this.state.isPaused && currentGeneration === this.downloadGeneration) {
+      this.state = { ...this.state, activeThreads: this.state.activeThreads + 1 }
+      this.emit()
+      try {
+      while (!signal.aborted && !genSignal.aborted && !this.state.isPaused && currentGeneration === this.downloadGeneration) {
         const idx = getNextPendingIndex()
         if (idx === -1) break
 
@@ -182,8 +219,10 @@ export class GalleryDownloader {
         let retries = 0
         const maxRetries = this.settings.retryCount
 
+        const combinedSignal = AbortSignal.any([signal, genSignal])
+
         while (true) {
-          if (signal.aborted || this.state.isPaused) break
+          if (signal.aborted || genSignal.aborted || this.state.isPaused) break
 
           let currentPageUrl = task.pageUrl
           const taskNl = this.state.imageTasks[idx].nl
@@ -197,7 +236,7 @@ export class GalleryDownloader {
             this.info.gid,
             task.index + 1,
             this.settings,
-            signal,
+            combinedSignal,
             {
               onProgress: (loaded, total, speed) => {
                 this.updateTask(idx, {
@@ -211,7 +250,10 @@ export class GalleryDownloader {
                 }
               },
             },
-            this.forceOriginalForAll ? false : this.forceResizedForAll ? true : undefined,
+            this.state.imageTasks[idx].forceOriginal ? false
+              : this.forceOriginalForAll ? false
+              : this.forceResizedForAll ? true
+              : undefined,
           )
 
           if (result.nl) {
@@ -262,26 +304,38 @@ export class GalleryDownloader {
           break
         }
       }
+      } finally {
+        this.state = { ...this.state, activeThreads: Math.max(0, this.state.activeThreads - 1) }
+        this.emit()
+      }
     }
 
     const threads = Array.from({ length: threadCount }, () => runThread())
     await Promise.all(threads)
 
-    if (signal.aborted) return 'aborted'
+    if (signal.aborted || genSignal.aborted) return 'aborted'
     if (currentGeneration !== this.downloadGeneration) return 'aborted'
 
     const failed = this.state.imageTasks.filter(t => t.status === 'failed')
 
     if (failed.length > 0 && !this.state.isPaused) {
       this.startPeriodicRetry(threadCount)
+      this.onResult?.('failed')
       return 'failed'
     }
 
     if (this.state.isPaused) {
+      this.onResult?.('paused')
       return 'paused'
     }
 
+    if (this.disposed) return 'aborted'
+
+    this.stopPeriodicRetry()
+    this.stopStallMonitor()
+    this.disposed = true
     await this.finalize()
+    this.onResult?.('completed')
     return 'completed'
   }
 
@@ -296,6 +350,52 @@ export class GalleryDownloader {
     if (this.periodicRetryTimer !== null) {
       clearTimeout(this.periodicRetryTimer)
       this.periodicRetryTimer = null
+    }
+  }
+
+  private startStallMonitor(threadCount: number): void {
+    this.stallThreadCount = threadCount
+    if (this.stallMonitorTimer) return
+    this.stallLastDoneCount = this.state.imageTasks.filter(t => t.status === 'done').length
+    this.stallLastChangeTime = Date.now()
+
+    this.stallMonitorTimer = setInterval(() => {
+      if (this.state.isPaused) return
+      if (this.state.error?.type === 'ip_banned') return
+
+      const doneCount = this.state.imageTasks.filter(t => t.status === 'done').length
+      const total = this.state.imageTasks.length
+      const remaining = total - doneCount
+
+      if (doneCount !== this.stallLastDoneCount) {
+        this.stallLastDoneCount = doneCount
+        this.stallLastChangeTime = Date.now()
+        this.stallRetryStage = 0
+        return
+      }
+
+      if (remaining === 0 || remaining > 10) return
+      if (Date.now() - this.stallLastChangeTime < 30_000) return
+
+      if (this.stallRetryStage === 0) {
+        this.stallRetryStage = 1
+        this.stallLastChangeTime = Date.now()
+        this.retryAllNonDone(this.stallThreadCount)
+      } else if (this.stallRetryStage === 1) {
+        this.stallRetryStage = 2
+        this.stallLastChangeTime = Date.now()
+        this.retryWithOriginal(this.stallThreadCount)
+      } else {
+        this.stopStallMonitor()
+        this.onTag?.('stalled')
+      }
+    }, 5_000)
+  }
+
+  private stopStallMonitor(): void {
+    if (this.stallMonitorTimer) {
+      clearInterval(this.stallMonitorTimer)
+      this.stallMonitorTimer = null
     }
   }
 
@@ -398,6 +498,20 @@ export class GalleryDownloader {
     })
   }
 
+  retryFailedWithOriginal(threadCount: number): void {
+    this.stopPeriodicRetry()
+    this.state = {
+      ...this.state,
+      isPaused: false,
+      error: null,
+      imageTasks: this.state.imageTasks.map(t =>
+        t.status === 'failed' ? { ...t, status: 'pending' as const, error: null, forceOriginal: true } : t,
+      ),
+    }
+    this.emit()
+    this.downloadAll(threadCount)
+  }
+
   retryAllFailed(threadCount: number): void {
     this.stopPeriodicRetry()
     this.state = {
@@ -436,6 +550,7 @@ export class GalleryDownloader {
 
   pause(): void {
     this.stopPeriodicRetry()
+    this.stopStallMonitor()
     this.state = { ...this.state, isPaused: true }
     this.emit()
   }
@@ -456,17 +571,33 @@ export class GalleryDownloader {
 
   cancel(): void {
     this.stopPeriodicRetry()
+    this.stopStallMonitor()
     this.abortController.abort()
     storageManager.deleteGallery(this.info.gid)
   }
 
   async savePartial(): Promise<void> {
     this.stopPeriodicRetry()
+    this.stopStallMonitor()
     this.abortController.abort()
     await this.finalize()
   }
 
+  dispose(): void {
+    this.stopPeriodicRetry()
+    this.stopStallMonitor()
+    this.disposed = true
+  }
+
   getState(): GalleryDownloadState {
     return this.state
+  }
+
+  getInfo(): GalleryInfo {
+    return this.info
+  }
+
+  updateInfo(partial: Partial<GalleryInfo>): void {
+    this.info = { ...this.info, ...partial }
   }
 }

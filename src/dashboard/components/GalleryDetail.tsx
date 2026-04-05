@@ -4,6 +4,7 @@ import ImageProgressTable from './ImageProgressTable'
 interface GalleryDetailProps {
   item: QueueItem
   imageTasks: ImageTask[]
+  activeThreads: number
   onStart: () => void
   onPause: () => void
   onResume: () => void
@@ -12,6 +13,7 @@ interface GalleryDetailProps {
   onRetryOriginal: () => void
   onCancel: () => void
   onRequeue: () => void
+  onSetThreadOverride: (count: number | undefined) => void
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -47,7 +49,7 @@ function formatSpeed(bytesPerSec: number): string {
 }
 
 export default function GalleryDetail({
-  item, imageTasks, onStart, onPause, onResume, onRetryFailed, onRetryAll, onRetryOriginal, onCancel, onRequeue,
+  item, imageTasks, activeThreads, onStart, onPause, onResume, onRetryFailed, onRetryAll, onRetryOriginal, onCancel, onRequeue, onSetThreadOverride,
 }: GalleryDetailProps) {
   const progress = computeProgress(imageTasks)
   const overallSpeed = computeOverallSpeed(imageTasks)
@@ -138,6 +140,11 @@ export default function GalleryDetail({
                   {formatSpeed(overallSpeed)}
                 </span>
               )}
+              {item.status === 'downloading' && (
+                <span className="font-mono text-[10px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                  {activeThreads}T
+                </span>
+              )}
               {failedCount > 0 && (
                 <span className="text-[10px] font-medium text-red-500">
                   {failedCount} failed
@@ -201,7 +208,7 @@ export default function GalleryDetail({
                 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60
                 transition-colors active:scale-[0.98]"
             >
-              Retry Failed ({failedCount})
+              Retry Failed as Original ({failedCount})
             </button>
           )}
           {item.status === 'downloading' && imageTasks.length > 0 && progress.done < imageTasks.length && (
@@ -258,6 +265,28 @@ export default function GalleryDetail({
             >
               Cancel
             </button>
+          )}
+          {(item.status === 'downloading' || item.status === 'paused' || item.status === 'queued') && (
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">Threads</span>
+              <input
+                type="number"
+                value={item.threadCountOverride ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value
+                  onSetThreadOverride(val === '' ? undefined : Math.max(1, Number(val)))
+                }}
+                placeholder="Auto"
+                min={1}
+                className="w-14 px-1.5 py-1 text-[10px] font-mono rounded-md text-center
+                  border border-zinc-200 dark:border-zinc-700
+                  bg-white dark:bg-zinc-800
+                  text-zinc-700 dark:text-zinc-300
+                  placeholder:text-zinc-400 dark:placeholder:text-zinc-500
+                  focus:outline-none focus:ring-1 focus:ring-sky-500
+                  transition-colors"
+              />
+            </div>
           )}
         </div>
       </div>

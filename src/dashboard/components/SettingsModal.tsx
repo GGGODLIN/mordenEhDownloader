@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { Settings } from '@shared/types'
 import { DEFAULT_SETTINGS, TEMPLATE_VARS } from '@shared/constants'
 import { storage } from '@shared/storage'
+import { recordBan, clearBanFlag } from '@services/ban-tracker'
 
 interface SettingsModalProps {
   onClose: () => void
@@ -279,6 +280,34 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                   helper="Keep trying original images even on suspension"
                 />
               )}
+              <div className="border-t border-zinc-100 dark:border-zinc-800 pt-4">
+                <Toggle
+                  label="Slow Mode"
+                  checked={settings.slowMode}
+                  onChange={v => update('slowMode', v)}
+                  helper="Use reduced thread/gallery count to avoid IP bans"
+                />
+              </div>
+              {settings.slowMode && (
+                <div className="grid grid-cols-2 gap-4">
+                  <NumberInput
+                    label="Slow Thread Count"
+                    value={settings.slowThreadCount}
+                    onChange={v => update('slowThreadCount', v)}
+                    min={1}
+                    max={10}
+                    helper="Threads in slow mode"
+                  />
+                  <NumberInput
+                    label="Slow Concurrent Galleries"
+                    value={settings.slowMaxConcurrentGalleries}
+                    onChange={v => update('slowMaxConcurrentGalleries', v)}
+                    min={1}
+                    max={5}
+                    helper="Galleries in slow mode"
+                  />
+                </div>
+              )}
               <SelectInput
                 label="Download from Domain"
                 value={settings.originalDownloadDomain}
@@ -439,6 +468,27 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                   />
                 </div>
               )}
+              <div className="border-t border-zinc-100 dark:border-zinc-800 pt-4">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Test Notification</span>
+                  <button
+                    onClick={() => {
+                      clearBanFlag()
+                      recordBan()
+                    }}
+                    className="w-full px-2.5 py-1.5 text-xs font-medium rounded-md
+                      text-zinc-600 dark:text-zinc-300
+                      bg-zinc-100 dark:bg-zinc-800
+                      hover:bg-zinc-200 dark:hover:bg-zinc-700
+                      transition-colors"
+                  >
+                    Send IP Ban Notification
+                  </button>
+                  <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                    Test if Chrome notifications are working
+                  </span>
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -6,7 +6,8 @@
   "permissions": [
     "storage",
     "unlimitedStorage",
-    "downloads"
+    "downloads",
+    "notifications"
   ],
   "host_permissions": [
     "*://*.e-hentai.org/*",
@@ -31,7 +32,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/dashboard/index.html"],
+      "resources": ["src/dashboard/index.html", "icon-notification.png"],
       "matches": ["<all_urls>"]
     }
   ]

@@ -3,6 +3,7 @@ import { REGEX, WATCHDOG_TIMEOUT_MS } from '@shared/constants'
 import { getSha1Checksum } from '@shared/checksum'
 import { classifyImageResponse } from './error-classifier'
 import { storageManager } from './storage-manager'
+import { recordBan, clearBanFlag } from './ban-tracker'
 
 export interface FetchImageResult {
   imageName: string
@@ -115,6 +116,21 @@ export async function fetchImageFromPage(
     }
   }
 
+  if (pageHtml.includes('temporarily banned')) {
+    recordBan()
+    return {
+      imageName: '',
+      nl: null,
+      error: {
+        type: 'ip_banned',
+        message: 'IP temporarily banned',
+        shouldRetry: false,
+        shouldPauseAll: true,
+        forceRetry: false,
+      },
+    }
+  }
+
   const nl = extractNl(pageHtml)
   const useResized = forceResizedOverride ?? settings.forceResized
   const imageUrl = extractImageUrl(pageHtml, useResized)
@@ -195,6 +211,7 @@ export async function fetchImageFromPage(
     let loaded = 0
     let lastLoaded = 0
     let lastTimestamp = Date.now()
+    let lowSpeedSince: number | null = null
 
     const reader = imageResponse.body.getReader()
 
@@ -224,12 +241,42 @@ export async function fetchImageFromPage(
       loaded += value.byteLength
 
       const now = Date.now()
-      if (now - lastTimestamp >= 1000) {
-        const speed = (loaded - lastLoaded) / (now - lastTimestamp) * 1000 / 1024
+      const elapsed = now - lastTimestamp
+      if (elapsed >= 500) {
+        const speed = (loaded - lastLoaded) / elapsed * 1000 / 1024
         lastLoaded = loaded
         lastTimestamp = now
         callbacks.onProgress(loaded, contentLength, speed)
+
+        if (settings.speedDetect) {
+          if (speed < settings.speedMinKBs) {
+            lowSpeedSince ??= now
+            if (now - lowSpeedSince >= settings.speedExpiredSec * 1000) {
+              cleanup()
+              reader.cancel()
+              return {
+                imageName: '',
+                nl,
+                error: {
+                  type: 'low_speed',
+                  message: `Speed below ${settings.speedMinKBs} KB/s for ${settings.speedExpiredSec}s`,
+                  shouldRetry: true,
+                  shouldPauseAll: false,
+                  forceRetry: false,
+                },
+              }
+            }
+          } else {
+            lowSpeedSince = null
+          }
+        }
       }
+    }
+
+    const finalElapsed = Date.now() - lastTimestamp
+    if (loaded > lastLoaded && finalElapsed > 0) {
+      const finalSpeed = (loaded - lastLoaded) / (finalElapsed > 0 ? finalElapsed : 1) * 1000 / 1024
+      callbacks.onProgress(loaded, contentLength, finalSpeed)
     }
 
     cleanup()
@@ -291,6 +338,7 @@ export async function fetchImageFromPage(
 
     const storedFileName = `${padIndex(index)}_${imageName}`
     await storageManager.writeImage(galleryId, storedFileName, buffer)
+    clearBanFlag()
 
     return { imageName, nl, error: null }
   } catch (err) {

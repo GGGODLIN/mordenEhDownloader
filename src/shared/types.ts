@@ -18,6 +18,8 @@ export interface QueueItem {
   addedAt: number
   completedAt?: number
   status: 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'canceled'
+  tag?: string
+  threadCountOverride?: number
 }
 
 export interface ImageTask {
@@ -33,6 +35,7 @@ export interface ImageTask {
   retryCount: number
   error: string | null
   nl: string | null
+  forceOriginal: boolean
 }
 
 export interface Settings {
@@ -62,6 +65,9 @@ export interface Settings {
   historyMaxItems: number
   peakHoursWarning: boolean
   imageLimitsWarning: boolean
+  slowMode: boolean
+  slowThreadCount: number
+  slowMaxConcurrentGalleries: number
 }
 
 export interface ImageLimits {

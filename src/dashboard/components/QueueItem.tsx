@@ -73,6 +73,14 @@ export default function QueueItemCard({ item, isSelected, onSelect, onRemove }: 
           <span className="text-[10px] font-mono tabular-nums text-zinc-400 dark:text-zinc-500">
             {item.pageCount}p
           </span>
+          {item.tag && (
+            <>
+              <span className="text-[10px] text-zinc-300 dark:text-zinc-600 mx-0.5">|</span>
+              <span className="text-[10px] font-medium text-orange-500 dark:text-orange-400">
+                {item.tag}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
